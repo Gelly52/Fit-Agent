@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: spring-ai-mcp-client
+  profiles:
+    active: dev
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      base-url: ${OPENAI_BASE_URL}
+      chat:
+        options:
+          model: ${OPENAI_MODEL}
+    vectorstore:
+      redis:
+        initialize-schema: true
+        index-name: lee-vectorstore
+        prefix: "embedding:"
+
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 9379
+      password: your_redis_password
+
+logging:
+  level:
+    root: info
+
+internet:
+  websearch:
+    searxng:
+      url: http://127.0.0.1:6080/search
+      counts: 25
+
+server:
+  forward-headers-strategy: framework

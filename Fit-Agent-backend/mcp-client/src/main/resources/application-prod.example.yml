@@ -1,0 +1,32 @@
+server:
+  port: 7090
+  forward-headers-strategy: framework
+
+# 前端域名
+website:
+  domain: http://127.0.0.1:5501,http://localhost:5501
+
+spring:
+  ai:
+    mcp:
+      client:
+        enabled: true
+        name: spring-ai-mcp-client
+        type: ASYNC
+        sse:
+          connections:
+            server2:
+              url: http://localhost:9060
+              sse-endpoint: /sse
+        stdio:
+          servers-configuration: classpath:mcp-server.json
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 9379
+      password: your_redis_password
+internet:
+  websearch:
+    searxng:
+      url: http://127.0.0.1:6080/search
+      counts: 25

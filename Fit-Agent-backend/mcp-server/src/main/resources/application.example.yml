@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: spring-ai-mcp-server
+  profiles:
+    active: dev
+  ai:
+    mcp:
+      server:
+        name: spring-ai-mcp-server-sse
+        version: 1.0.0
+        sse-endpoint: /sse
+        type: async
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username: your_email@example.com
+    password: your_mail_auth_code
+    protocol: smtp
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          socketFactory:
+            port: 465
+            class: javax.net.ssl.SSLSocketFactory
+          ssl:
+            enable: true
+logging:
+  level:
+    root: info
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: assign_id
+      update-strategy: not_empty
+  mapper-locations: classpath*:/mappers/*.xml

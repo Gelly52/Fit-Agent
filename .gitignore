@@ -1,0 +1,60 @@
+# Fit-Agent\.gitignore
+
+# ==========================================
+# IDE & Editor
+# ==========================================
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+.claude/
+.DS_Store
+
+HELP.md
+# ==========================================
+# Build Output & Dependencies
+# ==========================================
+# Frontend
+Fit-Agent-frontend/node_modules/
+Fit-Agent-frontend/dist/
+
+# Backend (Maven)
+Fit-Agent-backend/target/
+!Fit-Agent-backend/.mvn/wrapper/maven-wrapper.jar
+
+# ==========================================
+# Cache & Temporary Files
+# ==========================================
+.snow/
+*.log
+*.tmp
+*.swp
+*~
+
+# ==========================================
+# OS Files
+# ==========================================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ==========================================
+# Logs
+# ==========================================
+*.log
+logs/
+Fit-Agent-backend/新建 文本文档.txt
+
+# Environment files (keep .env.example, ignore .env with secrets)
+.env
+.env.local
+.env.*.local
+
+# Ignore real backend application configs, keep example templates
+Fit-Agent-backend/**/application.yml
+Fit-Agent-backend/**/application-dev.yml
+Fit-Agent-backend/**/application-prod.yml
+!Fit-Agent-backend/**/application.example.yml
+!Fit-Agent-backend/**/application-dev.example.yml
+!Fit-Agent-backend/**/application-prod.example.yml

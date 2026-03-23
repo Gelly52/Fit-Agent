@@ -1,0 +1,126 @@
+import instance from "./http";
+
+export function doChat(bo) {
+  return instance({
+    url: "/chat/doChat",
+    method: "post",
+    data: bo,
+  });
+}
+
+export function ragSearch(bo) {
+  return instance({
+    url: "/rag/search",
+    method: "post",
+    data: bo,
+  });
+}
+
+export function internetSearch(bo) {
+  return instance({
+    url: "/internet/search",
+    method: "post",
+    data: bo,
+  });
+}
+
+export function getRecords(who) {
+  return instance({
+    url: "/chat/records?who=" + who,
+    method: "get",
+  });
+}
+
+export function uploadRagDoc(formData) {
+  return instance({
+    url: "/rag/uploadRagDoc",
+    method: "post",
+    data: formData,
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+}
+
+export function agentExecute(bo) {
+  return instance({
+    url: "/agent/execute",
+    method: "post",
+    data: bo,
+  });
+}
+
+export function ragConfig(bo) {
+  return instance({
+    url: "/rag/config",
+    method: "post",
+    data: bo,
+  });
+}
+
+export function benchmarkEvaluate(bo) {
+  return instance({
+    url: "/rag/benchmark/evaluate",
+    method: "post",
+    data: bo,
+  });
+}
+
+export function logTraining(bo) {
+  return instance({
+    url: "/training/log",
+    method: "post",
+    data: bo,
+  });
+}
+
+export function logBodyMetrics(bo) {
+  return instance({
+    url: "/body-metrics/log",
+    method: "post",
+    data: bo,
+  });
+}
+
+export function getRecentTraining(limit) {
+  return instance({
+    url: "/training/recent?limit=" + (limit || 5),
+    method: "get",
+  });
+}
+
+export function getRecentMetrics(limit) {
+  return instance({
+    url: "/body-metrics/recent?limit=" + (limit || 5),
+    method: "get",
+  });
+}
+
+export function getUploadedDocs() {
+  return instance({
+    url: "/rag/docs",
+    method: "get",
+  });
+}
+
+const doctorApi = {
+  doChat,
+  ragSearch,
+  internetSearch,
+  getRecords,
+  uploadRagDoc,
+  agentExecute,
+  ragConfig,
+  benchmarkEvaluate,
+  logTraining,
+  logBodyMetrics,
+  getRecentTraining,
+  getRecentMetrics,
+  getUploadedDocs,
+};
+
+if (typeof window !== "undefined") {
+  window.doctorApi = doctorApi;
+}
+
+export default doctorApi;
