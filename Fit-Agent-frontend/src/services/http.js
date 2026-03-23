@@ -1,32 +1,38 @@
-import axios from 'axios';
-import { API_BASE } from '../config/runtime';
+import axios from "axios";
+import { API_BASE } from "../config/runtime";
 
-const TOKEN_COOKIE_KEY = 'user_token';
-const USER_INFO_COOKIE_KEY = 'user_info';
+const TOKEN_COOKIE_KEY = "user_token";
+const USER_INFO_COOKIE_KEY = "user_info";
+const DEFAULT_COOKIE_MAX_AGE = 7 * 24 * 60 * 60;
 
 export function getCookieValue(name, cookieString) {
-  const source = typeof cookieString === 'string'
-    ? cookieString
-    : (typeof document !== 'undefined' ? document.cookie : '');
+  const source =
+    typeof cookieString === "string"
+      ? cookieString
+      : typeof document !== "undefined"
+      ? document.cookie
+      : "";
 
   if (!source) {
     return undefined;
   }
 
-  const cookieEntries = source.split(';');
+  const cookieEntries = source.split(";");
   for (let index = 0; index < cookieEntries.length; index += 1) {
     const cookieEntry = cookieEntries[index].trim();
     if (!cookieEntry) {
       continue;
     }
 
-    const separatorIndex = cookieEntry.indexOf('=');
-    const rawName = separatorIndex >= 0 ? cookieEntry.slice(0, separatorIndex) : cookieEntry;
+    const separatorIndex = cookieEntry.indexOf("=");
+    const rawName =
+      separatorIndex >= 0 ? cookieEntry.slice(0, separatorIndex) : cookieEntry;
     if (rawName !== name) {
       continue;
     }
 
-    const rawValue = separatorIndex >= 0 ? cookieEntry.slice(separatorIndex + 1) : '';
+    const rawValue =
+      separatorIndex >= 0 ? cookieEntry.slice(separatorIndex + 1) : "";
     try {
       return decodeURIComponent(rawValue);
     } catch (error) {
@@ -37,13 +43,44 @@ export function getCookieValue(name, cookieString) {
   return undefined;
 }
 
+export function setCookieValue(
+  name,
+  value,
+  maxAgeSeconds = DEFAULT_COOKIE_MAX_AGE
+) {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const encodedValue = encodeURIComponent(value == null ? "" : String(value));
+  let cookie = `${name}=${encodedValue}; path=/; SameSite=Lax`;
+  if (typeof maxAgeSeconds === "number") {
+    cookie += `; max-age=${maxAgeSeconds}`;
+  }
+  document.cookie = cookie;
+}
+
+export function removeCookieValue(name) {
+  if (typeof document === "undefined") {
+    return;
+  }
+  document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
+}
+
 export function getToken() {
   return getCookieValue(TOKEN_COOKIE_KEY);
 }
 
+export function setToken(token, maxAgeSeconds = DEFAULT_COOKIE_MAX_AGE) {
+  if (!token) {
+    return;
+  }
+  setCookieValue(TOKEN_COOKIE_KEY, token, maxAgeSeconds);
+}
+
 export function getUserInfo() {
   const userJson = getCookieValue(USER_INFO_COOKIE_KEY);
-  if (userJson === undefined || userJson === '') {
+  if (userJson === undefined || userJson === "") {
     return undefined;
   }
 
@@ -54,11 +91,23 @@ export function getUserInfo() {
   }
 }
 
+export function setUserInfo(userInfo, maxAgeSeconds = DEFAULT_COOKIE_MAX_AGE) {
+  if (!userInfo) {
+    return;
+  }
+  setCookieValue(USER_INFO_COOKIE_KEY, JSON.stringify(userInfo), maxAgeSeconds);
+}
+
+export function clearUserSession() {
+  removeCookieValue(TOKEN_COOKIE_KEY);
+  removeCookieValue(USER_INFO_COOKIE_KEY);
+}
+
 export function createHttpInstance() {
   const httpInstance = axios.create({
     baseURL: API_BASE,
     withCredentials: true,
-    timeout: 60000
+    timeout: 60000,
   });
 
   httpInstance.interceptors.request.use(
@@ -68,7 +117,7 @@ export function createHttpInstance() {
 
       const userInfo = getUserInfo();
       if (userInfo) {
-        nextConfig.headers.headerUserId = userInfo.id;
+        nextConfig.headers.headerUserId = userInfo.userKey || userInfo.id;
       }
 
       const userToken = getToken();
@@ -87,8 +136,8 @@ export function createHttpInstance() {
   httpInstance.interceptors.response.use(
     (response) => response.data,
     (error) => {
-      console.log('err: ' + error);
-      console.log('err: ' + (error && error.data));
+      console.log("err: " + error);
+      console.log("err: " + (error && error.data));
       return Promise.reject(error);
     }
   );
@@ -99,7 +148,7 @@ export function createHttpInstance() {
 export const instance = createHttpInstance();
 export const http = instance;
 
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   window.instance = instance;
 }
 

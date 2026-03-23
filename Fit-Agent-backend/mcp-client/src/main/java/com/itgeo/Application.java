@@ -1,6 +1,7 @@
 package com.itgeo;
 
 import io.github.cdimascio.dotenv.Dotenv;
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -9,6 +10,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * &#064;description:  应用入口
  * &#064;date  2024-05-20 10:00:00
  */
+@MapperScan("com.itgeo.mapper")
 @SpringBootApplication
 public class Application {
     public static void main(String[] args) {

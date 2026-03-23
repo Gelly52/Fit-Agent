@@ -24,6 +24,29 @@ export function internetSearch(bo) {
   });
 }
 
+export function sendUserCode(bo) {
+  return instance({
+    url: "/user/code",
+    method: "post",
+    data: bo,
+  });
+}
+
+export function userLogin(bo) {
+  return instance({
+    url: "/user/login",
+    method: "post",
+    data: bo,
+  });
+}
+
+export function userLogout() {
+  return instance({
+    url: "/user/logout",
+    method: "post",
+  });
+}
+
 export function getRecords(who) {
   return instance({
     url: "/chat/records?who=" + who,
@@ -107,6 +130,9 @@ const doctorApi = {
   doChat,
   ragSearch,
   internetSearch,
+  sendUserCode,
+  userLogin,
+  userLogout,
   getRecords,
   uploadRagDoc,
   agentExecute,
