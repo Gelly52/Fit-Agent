@@ -1,5 +1,6 @@
 package com.itgeo.controller;
 
+import com.itgeo.auth.UserContextHolder;
 import com.itgeo.bean.ChatEntity;
 import com.itgeo.service.ChatService;
 import com.itgeo.service.DocumentService;
@@ -7,8 +8,12 @@ import com.itgeo.utils.LeeResult;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.ai.document.Document;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -19,6 +24,7 @@ public class RagController {
 
     @Resource
     private DocumentService documentService;
+
     @Resource
     private ChatService chatService;
 
@@ -37,7 +43,7 @@ public class RagController {
     public void search(@RequestBody ChatEntity chatEntity, HttpServletResponse response) {
         List<Document> list = documentService.doSearch(chatEntity.getMessage());
         response.setCharacterEncoding("UTF-8");
+        chatEntity.setCurrentUserName(UserContextHolder.getRequired().getUserKey());
         chatService.doChatRagSearch(chatEntity, list);
     }
-
 }

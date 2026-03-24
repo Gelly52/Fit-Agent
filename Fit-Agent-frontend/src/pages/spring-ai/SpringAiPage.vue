@@ -227,20 +227,30 @@
 </template>
 
 <script>
+import { defineAsyncComponent } from "vue";
 import { marked } from "marked";
 import ChatInputPanel from "./components/ChatInputPanel.vue";
 import ChatMessageList from "./components/ChatMessageList.vue";
-import UploadPanel from "./components/UploadPanel.vue";
 import LeftSidebar from "./components/LeftSidebar.vue";
 import RightPanel from "./components/RightPanel.vue";
 import StatusBar from "./components/StatusBar.vue";
-import TrainingLogView from "./components/TrainingLogView.vue";
-import BodyMetricsView from "./components/BodyMetricsView.vue";
-import DashboardView from "./components/DashboardView.vue";
 import doctorApi from "../../services/doctorApi";
 import { clearUserSession, getUserInfo } from "../../services/http";
 import { connectSse, closeSse } from "../../services/sseService";
 import { extractSourcesFromResponse as extractSourcesFromResponseUtil } from "./utils/sourceNormalizer";
+
+const UploadPanel = defineAsyncComponent(() =>
+  import("./components/UploadPanel.vue")
+);
+const TrainingLogView = defineAsyncComponent(() =>
+  import("./components/TrainingLogView.vue")
+);
+const BodyMetricsView = defineAsyncComponent(() =>
+  import("./components/BodyMetricsView.vue")
+);
+const DashboardView = defineAsyncComponent(() =>
+  import("./components/DashboardView.vue")
+);
 
 export default {
   name: "SpringAiPage",
@@ -367,10 +377,13 @@ export default {
     },
   },
   created() {
+    this._sseConnection = null;
+    this._sseSource = null;
+    this._sseConnectingPromise = null;
     this.loadUserSessionFromCookie();
     var stableUserKey = this.resolveStableUserKey();
     if (stableUserKey) {
-      this.initSSE(stableUserKey);
+      this.ensureSseConnection();
     } else {
       this.guidanceMessage = "请先完成手机号登录，再开始你的专属健身会话。";
     }
@@ -379,7 +392,7 @@ export default {
     this.scrollToBottom(true);
   },
   beforeUnmount() {
-    this.teardownSSE();
+    this.teardownSSE({ clearPending: true });
   },
   methods: {
     toggleMobileLeft() {
@@ -587,7 +600,7 @@ export default {
         )
         .finally(
           function () {
-            this.teardownSSE();
+            this.teardownSSE({ clearPending: true });
             clearUserSession();
             this.currentUserInfo = null;
             this.currentUserName = null;
@@ -596,12 +609,15 @@ export default {
           }.bind(this)
         );
     },
-    teardownSSE() {
+    teardownSSE(options) {
       closeSse(this._sseConnection || this._sseSource);
       this._sseConnection = null;
       this._sseSource = null;
+      if (options && options.clearPending === true) {
+        this._sseConnectingPromise = null;
+      }
     },
-    ensureSseConnection() {
+    async ensureSseConnection() {
       if (
         this._sseConnection &&
         (this._sseSource || this._sseConnection.isSupported === false)
@@ -614,12 +630,22 @@ export default {
         return null;
       }
 
-      return this.initSSE(stableUserKey);
+      if (this._sseConnectingPromise) {
+        return this._sseConnectingPromise;
+      }
+
+      this._sseConnectingPromise = this.initSSE();
+
+      try {
+        return await this._sseConnectingPromise;
+      } finally {
+        this._sseConnectingPromise = null;
+      }
     },
-    initSSE(userId) {
+    async initSSE() {
       var me = this;
-      var resolvedUserId = userId || this.resolveStableUserKey();
-      if (!resolvedUserId) {
+      var resolvedUserKey = this.resolveStableUserKey();
+      if (!resolvedUserKey) {
         this.sseState = "idle";
         this.guidanceMessage = "请先完成手机号登录，再建立实时会话通道。";
         return null;
@@ -632,184 +658,214 @@ export default {
         console.log(event && event.data);
       };
 
-      this.currentUserName = resolvedUserId;
+      this.currentUserName = resolvedUserKey;
       this.teardownSSE();
       this.sseState = "connecting";
       this.guidanceMessage = "正在连接 SSE 实时通道，请稍候。";
-      console.log("连接用户=" + resolvedUserId);
+      console.log("连接用户=" + resolvedUserKey);
 
       try {
-        var connection = connectSse({
-          userId: resolvedUserId,
-          onOpen: function () {
-            console.log("建立连接。。。");
-            me.sseState = "connected";
-            me.guidanceMessage = "SSE 已连接，可开始执行任务。";
-          },
-          onAdd: function (event) {
-            var receiveMsg =
-              event && event.data != null ? String(event.data) : "";
-            var botMsgId = me.botMsgId;
-            var targetChatItem = null;
+        var ticketResponse = await doctorApi.createSseTicket();
+        var ticketData = this.unwrapApiData(
+          ticketResponse,
+          "获取 SSE 连接票据失败"
+        );
+        var ticket =
+          ticketData && ticketData.ticket != null
+            ? String(ticketData.ticket)
+            : "";
 
-            // Track TTFT
-            if (me.taskStartTime && !me.lastTtft) {
-              me.lastTtft = Date.now() - me.taskStartTime;
+        if (!ticket) {
+          throw new Error("SSE 连接票据为空");
+        }
+
+        return await new Promise(function (resolve) {
+          var settled = false;
+          var connection = null;
+          var connectTimeout = null;
+          var settle = function (value) {
+            if (settled) {
+              return;
             }
-
-            console.log(receiveMsg);
-            me.isSending = false;
-            me.isStreaming = true;
-
-            // Update agent steps if in agent mode
-            if (me.agentModeSelected && me.agentSteps.length > 0) {
-              me.updateAgentStepsOnStream();
+            settled = true;
+            if (connectTimeout) {
+              clearTimeout(connectTimeout);
             }
+            resolve(value);
+          };
 
-            for (var i = 0; i < me.chatList.length; i++) {
-              var chatItem = me.chatList[i];
-              if (chatItem.botMsgId == botMsgId) {
-                targetChatItem = chatItem;
-                break;
+          connection = connectSse({
+            ticket: ticket,
+            onOpen: function () {
+              console.log("建立连接。。。");
+              me.sseState = "connected";
+              me.guidanceMessage = "SSE 已连接，可开始执行任务。";
+              settle(connection);
+            },
+            onAdd: function (event) {
+              var receiveMsg =
+                event && event.data != null ? String(event.data) : "";
+              var botMsgId = me.botMsgId;
+              var targetChatItem = null;
+
+              if (me.taskStartTime && !me.lastTtft) {
+                me.lastTtft = Date.now() - me.taskStartTime;
               }
-            }
 
-            if (!targetChatItem) {
-              me.chatList.push({
-                id: "temp-" + me.generateRandomId(8),
-                content: receiveMsg,
-                userName: "bot",
-                chatType: "bot",
-                botMsgId: botMsgId,
-                createdAt: new Date().toISOString(),
-                sources: [],
-              });
-            } else {
-              targetChatItem.content =
-                (targetChatItem.content || "") + receiveMsg;
-            }
+              console.log(receiveMsg);
+              me.isSending = false;
+              me.isStreaming = true;
 
-            me.guidanceMessage = "正在生成回答，请稍候。";
-            me.scrollToBottom();
-          },
-          onFinish: function (event) {
-            console.log("finish事件...");
-            console.log(event && event.data);
-
-            // Calculate exec time
-            if (me.taskStartTime) {
-              var elapsed = Date.now() - me.taskStartTime;
-              if (elapsed < 1000) {
-                me.lastExecTime = elapsed + "ms";
-              } else {
-                me.lastExecTime = (elapsed / 1000).toFixed(1) + "s";
+              if (me.agentModeSelected && me.agentSteps.length > 0) {
+                me.updateAgentStepsOnStream();
               }
-              me.taskStartTime = null;
-            }
-
-            try {
-              var chatResponse = JSON.parse((event && event.data) || "{}");
-              var message = chatResponse.message;
-              var botMsgId = chatResponse.botMsgId;
-              var normalizedSources =
-                me.extractSourcesFromResponse(chatResponse);
-              var matched = false;
 
               for (var i = 0; i < me.chatList.length; i++) {
                 var chatItem = me.chatList[i];
                 if (chatItem.botMsgId == botMsgId) {
-                  chatItem.content = marked.parse(message || "");
-                  chatItem.sources = normalizedSources;
-                  matched = true;
+                  targetChatItem = chatItem;
+                  break;
                 }
               }
 
-              if (!matched && botMsgId) {
+              if (!targetChatItem) {
                 me.chatList.push({
                   id: "temp-" + me.generateRandomId(8),
-                  content: marked.parse(message || ""),
+                  content: receiveMsg,
                   userName: "bot",
                   chatType: "bot",
                   botMsgId: botMsgId,
                   createdAt: new Date().toISOString(),
-                  sources: normalizedSources,
+                  sources: [],
                 });
+              } else {
+                targetChatItem.content =
+                  (targetChatItem.content || "") + receiveMsg;
               }
 
-              // Update knowledge sources for right panel
-              if (normalizedSources && normalizedSources.length > 0) {
-                me.knowledgeSources = normalizedSources;
+              me.guidanceMessage = "正在生成回答，请稍候。";
+              me.scrollToBottom();
+            },
+            onFinish: function (event) {
+              console.log("finish事件...");
+              console.log(event && event.data);
+
+              if (me.taskStartTime) {
+                var elapsed = Date.now() - me.taskStartTime;
+                if (elapsed < 1000) {
+                  me.lastExecTime = elapsed + "ms";
+                } else {
+                  me.lastExecTime = (elapsed / 1000).toFixed(1) + "s";
+                }
+                me.taskStartTime = null;
               }
 
-              // Complete agent steps
+              try {
+                var chatResponse = JSON.parse((event && event.data) || "{}");
+                var message = chatResponse.message;
+                var botMsgId = chatResponse.botMsgId;
+                var normalizedSources =
+                  me.extractSourcesFromResponse(chatResponse);
+                var matched = false;
+
+                for (var i = 0; i < me.chatList.length; i++) {
+                  var chatItem = me.chatList[i];
+                  if (chatItem.botMsgId == botMsgId) {
+                    chatItem.content = marked.parse(message || "");
+                    chatItem.sources = normalizedSources;
+                    matched = true;
+                  }
+                }
+
+                if (!matched && botMsgId) {
+                  me.chatList.push({
+                    id: "temp-" + me.generateRandomId(8),
+                    content: marked.parse(message || ""),
+                    userName: "bot",
+                    chatType: "bot",
+                    botMsgId: botMsgId,
+                    createdAt: new Date().toISOString(),
+                    sources: normalizedSources,
+                  });
+                }
+
+                if (normalizedSources && normalizedSources.length > 0) {
+                  me.knowledgeSources = normalizedSources;
+                }
+
+                if (me.agentSteps.length > 0) {
+                  me.completeAllAgentSteps();
+                }
+
+                me.guidanceMessage = "本轮任务已完成，可继续发起新任务。";
+              } catch (error) {
+                console.error("解析finish事件失败:", error);
+                me.guidanceMessage = "任务已结束，但结果解析失败，请稍后重试。";
+              }
+
+              me.botMsgId = null;
+              me.isSending = false;
+              me.isStreaming = false;
+              me.scrollToBottom();
+            },
+            onError: function (event, context) {
+              var source =
+                context && context.source ? context.source : me._sseSource;
+              var readyState =
+                source && typeof source.readyState !== "undefined"
+                  ? source.readyState
+                  : "unknown";
+
+              console.log("error事件...");
+              console.log("e.readyState: " + readyState);
+
+              if (
+                typeof EventSource !== "undefined" &&
+                source &&
+                source.readyState === EventSource.CLOSED
+              ) {
+                console.log("connection is closed");
+              } else {
+                console.log("Error occurred", event);
+              }
+
+              if (me.isSending || me.isStreaming) {
+                me.showUiMessage("error", "响应中断，请稍后重试！");
+              }
+
               if (me.agentSteps.length > 0) {
-                me.completeAllAgentSteps();
+                me.failCurrentAgentStep();
               }
 
-              me.guidanceMessage = "本轮任务已完成，可继续发起新任务。";
-            } catch (error) {
-              console.error("解析finish事件失败:", error);
-              me.guidanceMessage = "任务已结束，但结果解析失败，请稍后重试。";
-            }
+              me.botMsgId = null;
+              me.isSending = false;
+              me.isStreaming = false;
+              me.sseState = "disconnected";
+              me.guidanceMessage = "SSE 通道已断开，发送新任务时会自动重连。";
+              me.teardownSSE();
+              settle(null);
+            },
+            onCustomEvent: handleCustomEvent,
+            onCustomEventSnake: handleCustomEvent,
+          });
 
-            me.botMsgId = null;
-            me.isSending = false;
-            me.isStreaming = false;
-            me.scrollToBottom();
-          },
-          onError: function (event, context) {
-            var source =
-              context && context.source ? context.source : me._sseSource;
-            var readyState =
-              source && typeof source.readyState !== "undefined"
-                ? source.readyState
-                : "unknown";
+          me._sseConnection = connection;
+          me._sseSource =
+            connection && connection.source ? connection.source : null;
 
-            console.log("error事件...");
-            console.log("e.readyState: " + readyState);
+          if (!connection || connection.isSupported === false) {
+            console.log("浏览器不支持SSE");
+            me.sseState = "unsupported";
+            me.guidanceMessage =
+              "当前环境暂不支持 SSE 实时通道，回复可能无法实时展示。";
+            settle(connection);
+            return;
+          }
 
-            if (
-              typeof EventSource !== "undefined" &&
-              source &&
-              source.readyState === EventSource.CLOSED
-            ) {
-              console.log("connection is closed");
-            } else {
-              console.log("Error occurred", event);
-            }
-
-            if (me.isSending || me.isStreaming) {
-              me.showUiMessage("error", "响应中断，请稍后重试！");
-            }
-
-            // Mark agent steps as failed
-            if (me.agentSteps.length > 0) {
-              me.failCurrentAgentStep();
-            }
-
-            me.botMsgId = null;
-            me.isSending = false;
-            me.isStreaming = false;
-            me.sseState = "disconnected";
-            me.guidanceMessage = "SSE 通道已断开，发送新任务时会自动重连。";
-            me.teardownSSE();
-          },
-          onCustomEvent: handleCustomEvent,
-          onCustomEventSnake: handleCustomEvent,
+          connectTimeout = setTimeout(function () {
+            settle(connection);
+          }, 3000);
         });
-
-        this._sseConnection = connection;
-        this._sseSource =
-          connection && connection.source ? connection.source : null;
-
-        if (!connection || connection.isSupported === false) {
-          console.log("浏览器不支持SSE");
-          this.sseState = "unsupported";
-          this.guidanceMessage =
-            "当前环境暂不支持 SSE 实时通道，回复可能无法实时展示。";
-        }
-
-        return connection;
       } catch (error) {
         console.error("建立SSE连接失败:", error);
         this.sseState = "disconnected";
@@ -1170,7 +1226,7 @@ export default {
         }
       }
     },
-    doChat() {
+    async doChat() {
       var currentUserName = this.currentUserName;
 
       if (this.isSending || this.isStreaming) {
@@ -1183,17 +1239,40 @@ export default {
         return;
       }
 
-      this.ensureSseConnection();
+      this.isSending = true;
+      this.isStreaming = false;
+      this.guidanceMessage = "正在建立 SSE 实时通道，请稍候。";
+
+      var sseConnection = null;
+      try {
+        sseConnection = await this.ensureSseConnection();
+      } catch (error) {
+        console.error("准备 SSE 连接失败:", error);
+      }
       currentUserName = this.currentUserName;
+
+      if (!currentUserName) {
+        this.showUiMessage(
+          "error",
+          "请先完成手机号登录，再开始你的专属健身会话。"
+        );
+        this.isSending = false;
+        this.guidanceMessage = "请先完成手机号登录，再开始你的专属健身会话。";
+        return;
+      }
+
+      if (!sseConnection) {
+        this.showUiMessage("error", "SSE 通道初始化失败，请稍后重试。");
+        this.isSending = false;
+        this.guidanceMessage = "SSE 通道初始化失败，请稍后重试。";
+        return;
+      }
 
       var botMsgId = this.generateRandomId(12);
       this.botMsgId = botMsgId;
-      this.isSending = true;
-      this.isStreaming = false;
       this.taskStartTime = Date.now();
       this.lastTtft = null;
 
-      // Build agent steps if in agent mode
       if (this.agentModeSelected) {
         this.agentSteps = this.buildAgentSteps(pendingMsg);
       } else {
@@ -1214,7 +1293,6 @@ export default {
       if (agentModeSelected) {
         console.log("agentExecute");
         requestPromise = doctorApi.agentExecute(singleChat).catch(function () {
-          // Fallback to doChat if agent endpoint not available
           console.log("agent endpoint not available, fallback to doChat");
           return doctorApi.doChat(singleChat);
         });

@@ -1,7 +1,6 @@
 import { createApp } from "vue";
 import App from "./App.vue";
 import "./styles/base.css";
-import "element-plus/dist/index.css";
 import "./styles/spring-ai-vite-layout.css";
 import "./styles/console-theme.css";
 import "./config/runtime";

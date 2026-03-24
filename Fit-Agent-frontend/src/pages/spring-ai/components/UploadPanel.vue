@@ -42,11 +42,16 @@
 </template>
 
 <script>
+import { ElIcon, ElUpload } from "element-plus";
 import { UploadFilled } from "@element-plus/icons-vue";
+import "element-plus/es/components/icon/style/css";
+import "element-plus/es/components/upload/style/css";
 
 export default {
   name: "UploadPanel",
   components: {
+    ElIcon,
+    ElUpload,
     UploadFilled,
   },
   emits: ["upload-doc"],

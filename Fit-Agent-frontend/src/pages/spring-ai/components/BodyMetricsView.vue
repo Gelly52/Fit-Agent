@@ -8,27 +8,33 @@
     </div>
 
     <div class="view-body">
-      <!-- Current Status Context Bar -->
       <div class="view-context-bar">
         <div class="context-stat">
-          <span class="context-stat-value">{{ todayStatus.weight || '--' }} <small>kg</small></span>
+          <span class="context-stat-value"
+            >{{ todayStatus.weight || "--" }} <small>kg</small></span
+          >
           <span class="context-stat-label">当前体重</span>
         </div>
         <div class="context-stat">
-          <span class="context-stat-value">{{ todayStatus.bodyFat || '--' }} <small>%</small></span>
+          <span class="context-stat-value"
+            >{{ todayStatus.bodyFat || "--" }} <small>%</small></span
+          >
           <span class="context-stat-label">当前体脂</span>
         </div>
         <div class="context-stat">
-          <span class="context-stat-value">{{ todayStatus.sleep || '--' }} <small>h</small></span>
+          <span class="context-stat-value"
+            >{{ todayStatus.sleep || "--" }} <small>h</small></span
+          >
           <span class="context-stat-label">睡眠时长</span>
         </div>
         <div class="context-stat">
-          <span class="context-stat-value" :class="fatigueClass">{{ todayStatus.fatigue || '--' }}</span>
+          <span class="context-stat-value" :class="fatigueClass">{{
+            todayStatus.fatigue || "--"
+          }}</span>
           <span class="context-stat-label">疲劳度</span>
         </div>
       </div>
 
-      <!-- Metrics Form -->
       <div class="view-form-card">
         <div class="metrics-grid">
           <div class="metrics-field">
@@ -72,7 +78,11 @@
           </div>
           <div class="metrics-field">
             <label class="exercise-label">疲劳度</label>
-            <el-select v-model="form.fatigue" placeholder="请选择" size="default">
+            <el-select
+              v-model="form.fatigue"
+              placeholder="请选择"
+              size="default"
+            >
               <el-option label="低" value="低" />
               <el-option label="中" value="中" />
               <el-option label="高" value="高" />
@@ -101,7 +111,6 @@
         </button>
       </div>
 
-      <!-- Recent Metrics History -->
       <div class="view-history-section" v-if="recentMetrics.length > 0">
         <h3 class="view-history-title">近期变化</h3>
         <div class="view-history-list">
@@ -120,9 +129,21 @@
 </template>
 
 <script>
+import { ElInput, ElInputNumber, ElOption, ElSelect } from "element-plus";
+import "element-plus/es/components/input/style/css";
+import "element-plus/es/components/input-number/style/css";
+import "element-plus/es/components/option/style/css";
+import "element-plus/es/components/select/style/css";
+
 export default {
-  name: 'BodyMetricsView',
-  emits: ['submit', 'back'],
+  name: "BodyMetricsView",
+  components: {
+    ElInput,
+    ElInputNumber,
+    ElOption,
+    ElSelect,
+  },
+  emits: ["submit", "back"],
   props: {
     todayStatus: {
       type: Object,
@@ -143,8 +164,8 @@ export default {
         weight: null,
         bodyFat: null,
         sleep: null,
-        fatigue: '',
-        note: '',
+        fatigue: "",
+        note: "",
       },
     };
   },
@@ -154,10 +175,10 @@ export default {
     },
     fatigueClass() {
       var fatigue = this.todayStatus.fatigue;
-      if (!fatigue) return '';
-      if (fatigue === '低' || fatigue === 'low') return 'status-good';
-      if (fatigue === '中' || fatigue === 'medium') return 'status-warn';
-      return 'status-alert';
+      if (!fatigue) return "";
+      if (fatigue === "低" || fatigue === "low") return "status-good";
+      if (fatigue === "中" || fatigue === "medium") return "status-warn";
+      return "status-alert";
     },
   },
   methods: {
@@ -165,7 +186,7 @@ export default {
       if (!this.canSubmit) {
         return;
       }
-      this.$emit('submit', {
+      this.$emit("submit", {
         weight: this.form.weight,
         bodyFat: this.form.bodyFat,
         sleep: this.form.sleep,

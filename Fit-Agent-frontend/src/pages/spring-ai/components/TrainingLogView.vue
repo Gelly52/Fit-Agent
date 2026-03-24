@@ -8,29 +8,29 @@
     </div>
 
     <div class="view-body">
-      <!-- Week Summary Context Bar -->
       <div class="view-context-bar">
         <div class="context-stat">
-          <span class="context-stat-value">{{ weekSummary.trainingDays || 0 }}</span>
+          <span class="context-stat-value">{{
+            weekSummary.trainingDays || 0
+          }}</span>
           <span class="context-stat-label">本周训练天数</span>
         </div>
         <div class="context-stat">
-          <span class="context-stat-value">{{ weekSummary.totalVolume || 0 }} <small>kg</small></span>
+          <span class="context-stat-value"
+            >{{ weekSummary.totalVolume || 0 }} <small>kg</small></span
+          >
           <span class="context-stat-label">本周总训练量</span>
         </div>
         <div class="context-stat">
-          <span class="context-stat-value" :class="trendClass">{{ weekSummary.trend || '暂无数据' }}</span>
+          <span class="context-stat-value" :class="trendClass">{{
+            weekSummary.trend || "暂无数据"
+          }}</span>
           <span class="context-stat-label">趋势</span>
         </div>
       </div>
 
-      <!-- Training Form -->
       <div class="view-form-card">
-        <div
-          v-for="(ex, idx) in exercises"
-          :key="idx"
-          class="exercise-entry"
-        >
+        <div v-for="(ex, idx) in exercises" :key="idx" class="exercise-entry">
           <div class="exercise-entry-header">
             <span class="exercise-entry-index">#{{ idx + 1 }}</span>
             <button
@@ -102,7 +102,6 @@
         </button>
       </div>
 
-      <!-- Recent Training History -->
       <div class="view-history-section" v-if="recentTraining.length > 0">
         <h3 class="view-history-title">最近训练</h3>
         <div class="view-history-list">
@@ -121,9 +120,17 @@
 </template>
 
 <script>
+import { ElInput, ElInputNumber } from "element-plus";
+import "element-plus/es/components/input/style/css";
+import "element-plus/es/components/input-number/style/css";
+
 export default {
-  name: 'TrainingLogView',
-  emits: ['submit', 'back'],
+  name: "TrainingLogView",
+  components: {
+    ElInput,
+    ElInputNumber,
+  },
+  emits: ["submit", "back"],
   props: {
     weekSummary: {
       type: Object,
@@ -140,30 +147,30 @@ export default {
   },
   data() {
     return {
-      exercises: [
-        { name: '', sets: 4, reps: 10, weight: 0 }
-      ],
+      exercises: [{ name: "", sets: 4, reps: 10, weight: 0 }],
     };
   },
   computed: {
     canSubmit() {
       for (var i = 0; i < this.exercises.length; i++) {
-        if ((this.exercises[i].name || '').trim()) {
+        if ((this.exercises[i].name || "").trim()) {
           return true;
         }
       }
       return false;
     },
     trendClass() {
-      var trend = this.weekSummary.trend || '';
-      if (trend.indexOf('上升') >= 0 || trend.indexOf('增长') >= 0) return 'trend-up';
-      if (trend.indexOf('下降') >= 0 || trend.indexOf('减少') >= 0) return 'trend-down';
-      return 'trend-stable';
+      var trend = this.weekSummary.trend || "";
+      if (trend.indexOf("上升") >= 0 || trend.indexOf("增长") >= 0)
+        return "trend-up";
+      if (trend.indexOf("下降") >= 0 || trend.indexOf("减少") >= 0)
+        return "trend-down";
+      return "trend-stable";
     },
   },
   methods: {
     addExercise() {
-      this.exercises.push({ name: '', sets: 4, reps: 10, weight: 0 });
+      this.exercises.push({ name: "", sets: 4, reps: 10, weight: 0 });
     },
     removeExercise(idx) {
       this.exercises.splice(idx, 1);
@@ -172,7 +179,7 @@ export default {
       var valid = [];
       for (var i = 0; i < this.exercises.length; i++) {
         var ex = this.exercises[i];
-        if ((ex.name || '').trim()) {
+        if ((ex.name || "").trim()) {
           valid.push({
             name: ex.name.trim(),
             sets: ex.sets || 1,
@@ -184,7 +191,10 @@ export default {
       if (valid.length === 0) {
         return;
       }
-      this.$emit('submit', { exercises: valid, date: new Date().toISOString().slice(0, 10) });
+      this.$emit("submit", {
+        exercises: valid,
+        date: new Date().toISOString().slice(0, 10),
+      });
     },
   },
 };

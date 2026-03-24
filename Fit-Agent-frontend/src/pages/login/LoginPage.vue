@@ -136,11 +136,7 @@ export default {
         .sendUserCode({ phone: phone })
         .then(
           function (res) {
-            var data = this.unwrapApiData(res, "验证码发送失败");
-            var debugCode = data && data.debugCode;
-            if (debugCode) {
-              this.loginForm.code = debugCode;
-            }
+            this.unwrapApiData(res, "验证码发送失败");
             this.showUiMessage("success", "验证码已发送");
             this.startCodeCountdown(60);
           }.bind(this)

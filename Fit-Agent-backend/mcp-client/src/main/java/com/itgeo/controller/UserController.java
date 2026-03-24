@@ -1,7 +1,9 @@
 package com.itgeo.controller;
 
+import com.itgeo.auth.UserContextHolder;
 import com.itgeo.bean.UserCodeRequest;
 import com.itgeo.bean.UserLoginRequest;
+import com.itgeo.service.SseTicketService;
 import com.itgeo.service.UserService;
 import com.itgeo.utils.LeeResult;
 import jakarta.annotation.Resource;
@@ -12,8 +14,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
-
 @Slf4j
 @RestController
 @RequestMapping("/user")
@@ -22,11 +22,14 @@ public class UserController {
     @Resource
     private UserService userService;
 
+    @Resource
+    private SseTicketService sseTicketService;
+
     @PostMapping("/code")
     public LeeResult sendCode(@RequestBody UserCodeRequest request) {
         try {
-            String code = userService.sendCode(request == null ? null : request.getPhone());
-            return LeeResult.ok(Map.of("debugCode", code));
+            userService.sendCode(request == null ? null : request.getPhone());
+            return LeeResult.ok();
         } catch (IllegalArgumentException e) {
             return LeeResult.errorMsg(e.getMessage());
         } catch (Exception e) {
@@ -62,6 +65,18 @@ public class UserController {
         } catch (Exception e) {
             log.error("退出登录失败", e);
             return LeeResult.errorException("退出登录失败");
+        }
+    }
+
+    @PostMapping("/sse-ticket")
+    public LeeResult createSseTicket() {
+        try {
+            return LeeResult.ok(sseTicketService.createTicket(UserContextHolder.getRequired()));
+        } catch (IllegalArgumentException e) {
+            return LeeResult.errorMsg(e.getMessage());
+        } catch (Exception e) {
+            log.error("创建 SSE 连接票据失败", e);
+            return LeeResult.errorException("创建 SSE 连接票据失败");
         }
     }
 

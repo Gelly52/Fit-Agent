@@ -47,6 +47,13 @@ export function userLogout() {
   });
 }
 
+export function createSseTicket() {
+  return instance({
+    url: "/user/sse-ticket",
+    method: "post",
+  });
+}
+
 export function getRecords(who) {
   return instance({
     url: "/chat/records?who=" + who,
@@ -133,6 +140,7 @@ const doctorApi = {
   sendUserCode,
   userLogin,
   userLogout,
+  createSseTicket,
   getRecords,
   uploadRagDoc,
   agentExecute,

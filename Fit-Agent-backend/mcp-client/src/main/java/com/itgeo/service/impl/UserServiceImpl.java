@@ -15,6 +15,8 @@ import com.itgeo.pojo.UserLoginSession;
 import com.itgeo.service.UserService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -41,9 +43,11 @@ public class UserServiceImpl implements UserService {
 
     @Resource
     private UserLoginSessionMapper userLoginSessionMapper;
+    @Resource
+    private Environment environment;
 
     @Override
-    public String sendCode(String phone) {
+    public void sendCode(String phone) {
         validatePhone(phone);
         String code = RandomUtil.randomNumbers(6);
         stringRedisTemplate.opsForValue().set(
@@ -52,8 +56,11 @@ public class UserServiceImpl implements UserService {
                 LOGIN_CODE_TTL_MINUTES,
                 TimeUnit.MINUTES
         );
-        log.info("发送登录验证码成功，phone={}, code={}", phone, code);
-        return code;
+        if (environment.acceptsProfiles(Profiles.of("dev"))) {
+            log.info("发送登录验证码成功，phone={}, code={}", phone, code);
+        } else {
+            log.info("发送登录验证码成功，phone={}", phone);
+        }
     }
 
     @Override

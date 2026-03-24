@@ -1,8 +1,8 @@
-import ElementPlus, { ElMessage } from "element-plus";
+import { ElMessage } from "element-plus";
+import "element-plus/es/components/message/style/css";
 
 export default function installElementPlus(app) {
-  app.use(ElementPlus);
   app.config.globalProperties.$message = ElMessage;
 }
 
-export { ElementPlus, ElMessage };
+export { ElMessage };
