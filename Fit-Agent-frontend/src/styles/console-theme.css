@@ -800,6 +800,10 @@ body::after {
   border-color: rgba(var(--console-accent-rgb), 0.16);
 }
 
+.console-main .message.user .message-body {
+  align-items: flex-end;
+}
+
 .console-main .message.user .text {
   background: linear-gradient(
     180deg,
@@ -807,6 +811,154 @@ body::after {
     rgba(28, 39, 64, 0.98) 100%
   );
   border-color: rgba(125, 211, 252, 0.16);
+  width: fit-content;
+  max-width: 100%;
+  display: inline-block;
+  align-self: flex-end;
+}
+
+.console-main .message.bot:not(.message-thinking) .text > * {
+  margin-top: 0;
+  margin-bottom: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.console-main .message.bot:not(.message-thinking) .text > * + * {
+  margin-top: 12px;
+}
+
+.console-main .message.bot:not(.message-thinking) .text p {
+  margin: 0;
+}
+
+.console-main .message.bot:not(.message-thinking) .text p + p {
+  margin-top: 0.62em;
+}
+
+.console-main .message.bot:not(.message-thinking) .text p,
+.console-main .message.bot:not(.message-thinking) .text li,
+.console-main .message.bot:not(.message-thinking) .text blockquote,
+.console-main .message.bot:not(.message-thinking) .text th,
+.console-main .message.bot:not(.message-thinking) .text td {
+  line-height: 1.72;
+  white-space: normal;
+}
+
+.console-main .message.bot:not(.message-thinking) .text h1,
+.console-main .message.bot:not(.message-thinking) .text h2,
+.console-main .message.bot:not(.message-thinking) .text h3,
+.console-main .message.bot:not(.message-thinking) .text h4 {
+  margin: 0;
+  color: #dbe6ff;
+  line-height: 1.38;
+  font-weight: 700;
+}
+
+.console-main .message.bot:not(.message-thinking) .text h1 {
+  font-size: 1.24em;
+}
+
+.console-main .message.bot:not(.message-thinking) .text h2 {
+  font-size: 1.16em;
+}
+
+.console-main .message.bot:not(.message-thinking) .text h3,
+.console-main .message.bot:not(.message-thinking) .text h4 {
+  font-size: 1.08em;
+}
+
+.console-main .message.bot:not(.message-thinking) .text ul,
+.console-main .message.bot:not(.message-thinking) .text ol {
+  margin: 0;
+  margin-left: 0;
+  padding-left: 1.4em;
+}
+
+.console-main .message.bot:not(.message-thinking) .text li + li {
+  margin-top: 6px;
+}
+
+.console-main .message.bot:not(.message-thinking) .text ul ul,
+.console-main .message.bot:not(.message-thinking) .text ul ol,
+.console-main .message.bot:not(.message-thinking) .text ol ul,
+.console-main .message.bot:not(.message-thinking) .text ol ol {
+  margin-top: 8px;
+}
+
+.console-main .message.bot:not(.message-thinking) .text a {
+  color: #7dd3fc;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.console-main .message.bot:not(.message-thinking) .text code {
+  font-family: Consolas, "SFMono-Regular", "Courier New", monospace;
+  font-size: 0.92em;
+  background: rgba(125, 211, 252, 0.12);
+  color: #7dd3fc;
+  padding: 0.2em 0.5em;
+  border-radius: 6px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  word-break: break-word;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.console-main .message.bot:not(.message-thinking) .text pre {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  line-height: 1.62;
+  overflow-x: auto;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.console-main .message.bot:not(.message-thinking) .text pre code {
+  display: block;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  white-space: pre;
+  word-break: normal;
+  font-size: 13px;
+  border: none;
+}
+
+.console-main .message.bot:not(.message-thinking) .text blockquote {
+  padding-left: 12px;
+  border-left: 3px solid rgba(var(--console-accent-rgb), 0.28);
+  color: var(--console-text-secondary);
+  background: rgba(125, 211, 252, 0.06);
+  border-radius: 0 10px 10px 0;
+}
+
+.console-main .message.bot:not(.message-thinking) .text hr {
+  border: none;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.console-main .message.bot:not(.message-thinking) .text table {
+  width: 100%;
+  max-width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  display: block;
+  overflow-x: auto;
+  border-radius: 10px;
+}
+
+.console-main .message.bot:not(.message-thinking) .text th,
+.console-main .message.bot:not(.message-thinking) .text td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .console-main .message.bot .message-body .text {
@@ -945,6 +1097,108 @@ body::after {
 
 .console-main .message-thinking-dot:nth-child(3) {
   animation-delay: 0.4s;
+}
+
+[data-theme="light"] .console-main .message.bot .text {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(241, 245, 249, 0.96) 100%
+  );
+  border-color: rgba(var(--console-accent-rgb), 0.14);
+}
+
+[data-theme="light"] .console-main .message.user .text {
+  background: linear-gradient(
+    180deg,
+    rgba(224, 231, 255, 0.98) 0%,
+    rgba(191, 219, 254, 0.96) 100%
+  );
+  border-color: rgba(var(--console-accent-secondary-rgb), 0.16);
+}
+
+[data-theme="light"] .console-main .message.bot:not(.message-thinking) .text h1,
+[data-theme="light"] .console-main .message.bot:not(.message-thinking) .text h2,
+[data-theme="light"] .console-main .message.bot:not(.message-thinking) .text h3,
+[data-theme="light"]
+  .console-main
+  .message.bot:not(.message-thinking)
+  .text
+  h4 {
+  color: #1e293b;
+}
+
+[data-theme="light"]
+  .console-main
+  .message.bot:not(.message-thinking)
+  .text
+  code {
+  background: rgba(var(--console-accent-rgb), 0.08);
+  color: var(--console-accent);
+  border-color: rgba(var(--console-accent-rgb), 0.16);
+}
+
+[data-theme="light"]
+  .console-main
+  .message.bot:not(.message-thinking)
+  .text
+  pre {
+  background: rgba(248, 250, 252, 0.98);
+  border-color: rgba(148, 163, 184, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+[data-theme="light"]
+  .console-main
+  .message.bot:not(.message-thinking)
+  .text
+  blockquote {
+  border-left-color: rgba(var(--console-accent-rgb), 0.24);
+  background: rgba(var(--console-accent-rgb), 0.06);
+}
+
+[data-theme="light"] .console-main .message .message-time {
+  color: rgba(100, 116, 139, 0.9);
+}
+
+[data-theme="light"] .console-main .message-actions {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(148, 163, 184, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+[data-theme="light"] .console-main .message.user .message-actions {
+  background: rgba(239, 246, 255, 0.96);
+  border-color: rgba(var(--console-accent-secondary-rgb), 0.14);
+}
+
+[data-theme="light"] .console-main .message-action-btn {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(241, 245, 249, 0.92) 100%
+  );
+  color: var(--console-text-muted);
+}
+
+[data-theme="light"] .console-main .message-action-btn:hover {
+  color: var(--console-accent);
+}
+
+[data-theme="light"] .console-main .chat-date-separator span {
+  background: rgba(255, 255, 255, 0.84);
+  border-color: rgba(148, 163, 184, 0.16);
+  color: rgba(51, 65, 85, 0.78);
+}
+
+[data-theme="light"] .console-main .message-thinking .text {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(241, 245, 249, 0.92) 100%
+  ) !important;
+  border-color: rgba(var(--console-accent-rgb), 0.12) !important;
 }
 
 /* Back to Bottom */
@@ -1771,6 +2025,27 @@ body::after {
     padding: 10px 13px;
     font-size: 13px;
     line-height: 1.62;
+  }
+
+  .console-main .message.bot:not(.message-thinking) .text > * + * {
+    margin-top: 10px;
+  }
+
+  .console-main .message.bot:not(.message-thinking) .text p,
+  .console-main .message.bot:not(.message-thinking) .text li,
+  .console-main .message.bot:not(.message-thinking) .text blockquote,
+  .console-main .message.bot:not(.message-thinking) .text th,
+  .console-main .message.bot:not(.message-thinking) .text td {
+    line-height: 1.62;
+  }
+
+  .console-main .message.bot:not(.message-thinking) .text pre {
+    padding: 10px 12px;
+  }
+
+  .console-main .message.bot:not(.message-thinking) .text th,
+  .console-main .message.bot:not(.message-thinking) .text td {
+    padding: 6px 8px;
   }
 
   .console-main .message .message-meta,
