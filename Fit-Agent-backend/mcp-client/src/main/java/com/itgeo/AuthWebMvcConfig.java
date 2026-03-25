@@ -15,7 +15,19 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(tokenAuthInterceptor)
-                .addPathPatterns("/user/**", "/chat/**", "/rag/**", "/internet/**", "/sse/**")
-                .excludePathPatterns("/user/code", "/user/login", "/hello/**", "/sse/connect", "/error");
+                .addPathPatterns(
+                        "/user/**",
+                        "/chat/**",
+                        "/rag/**",
+                        "/internet/**",
+                        "/sse/**",
+                        "/training/**",
+                        "/body-metrics/**")
+                .excludePathPatterns(
+                        "/user/code",
+                        "/user/login",
+                        "/hello/**",
+                        "/sse/connect",
+                        "/error");
     }
 }
