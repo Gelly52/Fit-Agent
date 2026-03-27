@@ -1,6 +1,8 @@
 package com.itgeo.service;
 
+import com.itgeo.auth.AuthenticatedUserContext;
 import com.itgeo.bean.ChatEntity;
+import com.itgeo.bean.ChatResponseEntity;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.document.Document;
 import reactor.core.publisher.Flux;
@@ -40,6 +42,8 @@ public interface ChatService {
      */
     public void doChat(ChatEntity chatEntity);
 
+    public ChatResponseEntity doChat(ChatEntity chatEntity, AuthenticatedUserContext authenticatedUser);
+
 
     /**
      * 流式聊天，与大模型交互，同时进行RAG知识库检索，汇总给大模型输出
@@ -49,6 +53,12 @@ public interface ChatService {
      */
     public void doChatRagSearch(ChatEntity chatEntity, List<Document> ragContext);
 
+    public ChatResponseEntity doChatRagSearch(
+            ChatEntity chatEntity,
+            List<Document> ragContext,
+            AuthenticatedUserContext authenticatedUser
+    );
+
      /**
       * 基于SearXng的实时联网搜索，将搜索结果添加到聊天实体中
       *
@@ -57,4 +67,8 @@ public interface ChatService {
       */
     public void doInternetSearch(ChatEntity chatEntity);
 
+    public ChatResponseEntity doInternetSearch(
+            ChatEntity chatEntity,
+            AuthenticatedUserContext authenticatedUser
+    );
 }

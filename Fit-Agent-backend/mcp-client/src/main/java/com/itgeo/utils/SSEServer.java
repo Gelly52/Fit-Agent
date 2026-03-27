@@ -29,18 +29,19 @@ public class SSEServer {
      */
     public static SseEmitter connect(String userId) {
         // 设置超时时间，0表示不超时，永不过期（默认超时时间为30秒，未完成任务抛出异常）
-        SseEmitter sseEmitter = new SseEmitter(0L);
+        SseEmitter newEmitter = new SseEmitter(0L);
+        SseEmitter oldEmitter = sseClients.put(userId, newEmitter);
 
         // 注册回调函数
-        sseEmitter.onTimeout(timeoutCallback(userId));
-        sseEmitter.onCompletion(completionCallback(userId));
-        sseEmitter.onError(errorCallback(userId));
+        newEmitter.onTimeout(() -> removeIfSame(userId, newEmitter));
+        newEmitter.onCompletion(() -> removeIfSame(userId, newEmitter));
+        newEmitter.onError(error -> removeIfSame(userId, newEmitter));
+        if (oldEmitter != null && oldEmitter != newEmitter) {
+            closeQuietly(oldEmitter);
+        }
 
         log.info("SSE连接成功，连接的用户ID为：{}", userId);
-
-        sseClients.put(userId, sseEmitter);
-
-        return sseEmitter;
+        return newEmitter;
     }
 
     /**
@@ -151,6 +152,27 @@ public class SSEServer {
         // 移除用户
         log.info("SSE连接被移除，移除的用户ID为：{}", userId);
         sseClients.remove(userId);
+    }
+
+    /**
+     * 检查用户是否已连接
+     *
+     * @param userId 用户ID
+     * @return 是否已连接
+     */
+    public static boolean isConnected(String userId) {
+        return !CollectionUtils.isEmpty(sseClients) && sseClients.containsKey(userId);
+    }
+
+    private static void removeIfSame(String userId, SseEmitter emitter) {
+        sseClients.computeIfPresent(userId, (key, current) -> current == emitter ? null : current);
+    }
+
+    private static void closeQuietly(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (Exception ignored) {
+        }
     }
 
 }

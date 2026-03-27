@@ -22,7 +22,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/internet/**",
                         "/sse/**",
                         "/training/**",
-                        "/body-metrics/**")
+                        "/body-metrics/**",
+                        "/agent/**")
                 .excludePathPatterns(
                         "/user/code",
                         "/user/login",

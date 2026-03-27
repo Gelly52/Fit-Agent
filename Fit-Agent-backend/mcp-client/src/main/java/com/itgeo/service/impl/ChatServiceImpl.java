@@ -1,5 +1,6 @@
 package com.itgeo.service.impl;
 
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.itgeo.auth.AuthenticatedUserContext;
 import com.itgeo.auth.UserContextHolder;
@@ -38,6 +39,7 @@ public class ChatServiceImpl implements ChatService {
 
     private String systemPrompt =
             "你是一个非常聪明的智能助手，你可以帮我解决很多问题，我为你取一个名字，你的名字是'GoGo'";
+    // TODO 规范化上下文内容，集成到系统提示词文件中
 
     public ChatServiceImpl(ChatClient.Builder chatClientBuilder, ToolCallbackProvider tools, ChatMemory chatMemory) {
         this.chatClient = chatClientBuilder
@@ -62,25 +64,19 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public void doChat(ChatEntity chatEntity) {
-        AuthenticatedUserContext authenticatedUser = UserContextHolder.getRequired();
-        String sseClientId = authenticatedUser.getSseClientId();
+    public void doChat(ChatEntity chatEntity){
+        doChat(chatEntity, UserContextHolder.getRequired());
+    }
+
+    @Override
+    public ChatResponseEntity doChat(ChatEntity chatEntity, AuthenticatedUserContext authenticatedUser) {
         String prompt = chatEntity.getMessage();
         String botMsgId = chatEntity.getBotMsgId();
 
         Flux<String> stringFlux = chatClient.prompt(prompt).stream().content();
-
-        List<String> list = stringFlux.toStream().map(chatResponse -> {
-            String content = chatResponse.toString();
-            SSEServer.sendMsg(sseClientId, content, SSEMsgType.ADD);
-            log.info("content: {}", content);
-            return content;
-        }).collect(Collectors.toList());
-
-        String fullContent = list.stream().collect(Collectors.joining());
-        ChatResponseEntity chatResponseEntity = new ChatResponseEntity(fullContent, botMsgId);
-        SSEServer.sendMsg(sseClientId, JSONUtil.toJsonStr(chatResponseEntity), SSEMsgType.FINISH);
+        return streamAndSend(stringFlux, authenticatedUser, botMsgId);
     }
+
 
     private static final String RAG_PROMPT_TEMPLATE = """
             基于上下文的知识库内容回答问题：
@@ -94,39 +90,31 @@ public class ChatServiceImpl implements ChatService {
             如果没有查到相关信息，你只能回答“我没有查到相关信息”。
             如果查到相关信息，你只能根据上下文的信息，来回答用户的问题，不相关的近似内容不必提到。
             """;
+    // TODO 规范化上下文内容，集成到系统提示词文件中
 
     @Override
-    public void doChatRagSearch(ChatEntity chatEntity, List<Document> ragContext) {
-        AuthenticatedUserContext authenticatedUser = UserContextHolder.getRequired();
-        String sseClientId = authenticatedUser.getSseClientId();
+    public void doChatRagSearch(ChatEntity chatEntity, List<Document> ragContext){
+        doChatRagSearch(chatEntity, ragContext, UserContextHolder.getRequired());
+    }
+
+    @Override
+    public ChatResponseEntity doChatRagSearch(ChatEntity chatEntity, List<Document> ragContext, AuthenticatedUserContext authenticatedUser) {
         String question = chatEntity.getMessage();
         String botMsgId = chatEntity.getBotMsgId();
-
-        String context = null;
-        if (ragContext != null && ragContext.size() > 0) {
+        String context = "";
+        if (ragContext != null && !ragContext.isEmpty()) {
             context = ragContext.stream()
                     .map(Document::getText)
                     .collect(Collectors.joining("\n"));
         }
-
         Prompt prompt = new Prompt(RAG_PROMPT_TEMPLATE
                 .replace("{context}", context)
                 .replace("{question}", question));
-        System.out.println(prompt);
 
         Flux<String> stringFlux = chatClient.prompt(prompt).stream().content();
-
-        List<String> list = stringFlux.toStream().map(chatResponse -> {
-            String content = chatResponse.toString();
-            SSEServer.sendMsg(sseClientId, content, SSEMsgType.ADD);
-            log.info("content: {}", content);
-            return content;
-        }).collect(Collectors.toList());
-
-        String fullContent = list.stream().collect(Collectors.joining());
-        ChatResponseEntity chatResponseEntity = new ChatResponseEntity(fullContent, botMsgId);
-        SSEServer.sendMsg(sseClientId, JSONUtil.toJsonStr(chatResponseEntity), SSEMsgType.FINISH);
+        return streamAndSend(stringFlux, authenticatedUser, botMsgId);
     }
+
 
     private static final String INTERNET_PROMPT_TEMPLATE = """
             你是一个互联网搜索大师，请基于以下联网搜索结果作为上下文，根据你的理解结合用户提问，综合后生成并输出专业的回答。
@@ -141,32 +129,26 @@ public class ChatServiceImpl implements ChatService {
             如果没有查到相关信息，结合你的理解做简要的阐述（需说明未查询到相关实际来源信息）。
             如果查到相关信息，请回复具体的内容。
             """;
+    // TODO 规范化上下文内容，集成到系统提示词文件中
 
     @Override
-    public void doInternetSearch(ChatEntity chatEntity) {
-        AuthenticatedUserContext authenticatedUser = UserContextHolder.getRequired();
-        String sseClientId = authenticatedUser.getSseClientId();
+    public void doInternetSearch(ChatEntity chatEntity){
+        doInternetSearch(chatEntity, UserContextHolder.getRequired());
+    }
+
+    @Override
+    public ChatResponseEntity doInternetSearch(ChatEntity chatEntity, AuthenticatedUserContext authenticatedUser) {
         String question = chatEntity.getMessage();
         String botMsgId = chatEntity.getBotMsgId();
 
         List<SearchResult> searchResults = searXngService.search(question);
         String finalPrompt = buildInternetPrompt(question, searchResults);
         Prompt prompt = new Prompt(finalPrompt);
-        System.out.println(prompt);
 
         Flux<String> stringFlux = chatClient.prompt(prompt).stream().content();
-
-        List<String> list = stringFlux.toStream().map(chatResponse -> {
-            String content = chatResponse.toString();
-            SSEServer.sendMsg(sseClientId, content, SSEMsgType.ADD);
-            log.info("content: {}", content);
-            return content;
-        }).collect(Collectors.toList());
-
-        String fullContent = list.stream().collect(Collectors.joining());
-        ChatResponseEntity chatResponseEntity = new ChatResponseEntity(fullContent, botMsgId);
-        SSEServer.sendMsg(sseClientId, JSONUtil.toJsonStr(chatResponseEntity), SSEMsgType.FINISH);
+        return streamAndSend(stringFlux, authenticatedUser, botMsgId);
     }
+
 
     private static String buildInternetPrompt(String question, List<SearchResult> searchResults) {
         StringBuilder context = new StringBuilder();
@@ -180,5 +162,35 @@ public class ChatServiceImpl implements ChatService {
         return INTERNET_PROMPT_TEMPLATE
                 .replace("{context}", context)
                 .replace("{question}", question);
+    }
+
+    private ChatResponseEntity streamAndSend(
+            Flux<String> stringFlux,
+            AuthenticatedUserContext authenticatedUser,
+            String botMsgId){
+
+        String sseClientId = authenticatedUser == null ? null : authenticatedUser.getSseClientId();
+
+        List<String> list = stringFlux.toStream().map(chunk -> {
+            String content = chunk == null ? "" : chunk;
+            if (StrUtil.isNotBlank(sseClientId) && !content.isEmpty()) {
+                SSEServer.sendMsg(sseClientId, content, SSEMsgType.ADD);
+            }
+            log.info("content: {}", content);
+            return content;
+        }).collect(Collectors.toList());
+
+        String fullContent = String.join("", list);
+        ChatResponseEntity chatResponseEntity = new ChatResponseEntity(fullContent, botMsgId);
+
+        if (StrUtil.isNotBlank(sseClientId)) {
+            SSEServer.sendMsg(
+                    sseClientId,
+                    JSONUtil.toJsonStr(chatResponseEntity),
+                    SSEMsgType.FINISH
+            );
+        }
+
+        return chatResponseEntity;
     }
 }

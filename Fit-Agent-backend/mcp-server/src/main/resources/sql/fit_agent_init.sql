@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS `t_chat_message` (
     `bot_msg_id` VARCHAR(64) DEFAULT NULL COMMENT '机器人消息ID',
     `sources_json` JSON DEFAULT NULL COMMENT '可选的知识来源列表',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     KEY `idx_chat_message_session_seq` (`session_id`, `seq_no`),
     KEY `idx_chat_message_bot` (`bot_msg_id`),
@@ -225,7 +226,7 @@ CREATE TABLE IF NOT EXISTS `t_dashboard_summary` (
 
 CREATE TABLE IF NOT EXISTS `t_agent_run` (
     `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT 'Agent 运行主键',
-    `user_id` BIGINT DEFAULT NULL COMMENT '发起用户主键',
+    `user_id` BIGINT NOT NULL COMMENT '发起用户主键',
     `chat_session_id` BIGINT DEFAULT NULL COMMENT '关联聊天会话主键，可为空',
     `request_text` LONGTEXT DEFAULT NULL COMMENT '原始任务输入',
     `status` VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT 'pending/running/success/failed',
@@ -234,7 +235,10 @@ CREATE TABLE IF NOT EXISTS `t_agent_run` (
     `started_at` DATETIME DEFAULT NULL,
     `finished_at` DATETIME DEFAULT NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `bot_msg_id` VARCHAR(64) NOT NULL COMMENT '机器人消息ID',
+
     PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_agent_run_user_bot_msg` (`user_id`, `bot_msg_id`),
     KEY `idx_agent_run_user` (`user_id`, `created_at`),
     KEY `idx_agent_run_status` (`status`, `created_at`),
     KEY `idx_agent_run_session` (`chat_session_id`),
@@ -257,12 +261,14 @@ CREATE TABLE IF NOT EXISTS `t_agent_step` (
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     KEY `idx_agent_step_run` (`agent_run_id`, `step_no`),
+    UNIQUE KEY `uk_agent_step_run_no` (`agent_run_id`, `step_no`),
     CONSTRAINT `fk_agent_step_run` FOREIGN KEY (`agent_run_id`) REFERENCES `t_agent_run` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Agent 步骤表';
 
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- 可选：初始化一个测试账号，便于功能联调
-INSERT INTO `t_user` (`user_key`, `username`, `nickname`, `status`)
-VALUES ('test-user-001', 'test_username_001', '测试用户', 1),
-('test-user-002', 'test_username_002', '测试用户2', 1);
+-- INSERT INTO `t_user` (`user_key`, `username`, `nickname`, `status`)
+-- VALUES ('test-user-001', 'test_username_001', '测试用户', 1),
+-- ('test-user-002', 'test_username_002', '测试用户2', 1);
+

@@ -9,10 +9,10 @@ import lombok.ToString;
 @ToString
 @AllArgsConstructor
 @NoArgsConstructor
-public class ChatEntity {
-    private String currentUserName;
+public class AgentStepEvent {
+    private Long runId;
+    private Integer stepNo;
+    private String stepName;
+    private String stepStatus;
     private String message;
-    private String botMsgId;
-    private String sessionCode;
-    private String clientRequestId;
 }
