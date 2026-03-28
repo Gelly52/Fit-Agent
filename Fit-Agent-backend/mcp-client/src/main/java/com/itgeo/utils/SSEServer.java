@@ -2,177 +2,143 @@ package com.itgeo.utils;
 
 import com.itgeo.enums.SSEMsgType;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.util.CollectionUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 
 /**
- * @author gzx
- * @description: SSE服务器
- * @date 2024-05-20 10:00:00
+ * SSE 连接管理器。
+ *
+ * 说明：
+ * 1. key 实际使用 sseClientId，而不是数据库 userId；
+ * 2. 同一 sseClientId 重连时，会先替换成新 emitter，再关闭旧 emitter；
+ * 3. 旧 emitter 的 completion / timeout / error 回调只会移除自己，避免误删新连接。
  */
 @Slf4j
 public class SSEServer {
 
-    // 存放所有用户
-    private static final Map<String, SseEmitter> sseClients = new ConcurrentHashMap<>();
+    private static final Map<String, SseEmitter> SSE_CLIENTS = new ConcurrentHashMap<>();
+
+    private SSEServer() {
+    }
 
     /**
-     * 连接SSE
+     * 建立或替换一个 SSE 连接。
      *
-     * @param userId 用户ID
-     * @return SSE发射器
+     * @param clientId SSE 客户端标识
+     * @return SSE 发射器
      */
-    public static SseEmitter connect(String userId) {
-        // 设置超时时间，0表示不超时，永不过期（默认超时时间为30秒，未完成任务抛出异常）
-        SseEmitter newEmitter = new SseEmitter(0L);
-        SseEmitter oldEmitter = sseClients.put(userId, newEmitter);
+    public static SseEmitter connect(String clientId) {
+        if (clientId == null || clientId.isBlank()) {
+            throw new IllegalArgumentException("sseClientId不能为空");
+        }
 
-        // 注册回调函数
-        newEmitter.onTimeout(() -> removeIfSame(userId, newEmitter));
-        newEmitter.onCompletion(() -> removeIfSame(userId, newEmitter));
-        newEmitter.onError(error -> removeIfSame(userId, newEmitter));
+        SseEmitter newEmitter = new SseEmitter(0L);
+        SseEmitter oldEmitter = SSE_CLIENTS.put(clientId, newEmitter);
+
+        newEmitter.onTimeout(() -> {
+            log.info("SSE连接超时, clientId={}", clientId);
+            removeIfSame(clientId, newEmitter);
+        });
+        newEmitter.onCompletion(() -> {
+            log.info("SSE连接完成, clientId={}", clientId);
+            removeIfSame(clientId, newEmitter);
+        });
+        newEmitter.onError(error -> {
+            log.warn("SSE连接异常, clientId={}, message={}", clientId, error == null ? null : error.getMessage());
+            removeIfSame(clientId, newEmitter);
+        });
+
         if (oldEmitter != null && oldEmitter != newEmitter) {
             closeQuietly(oldEmitter);
         }
 
-        log.info("SSE连接成功，连接的用户ID为：{}", userId);
+        log.info("SSE连接建立成功, clientId={}", clientId);
         return newEmitter;
     }
 
     /**
-     * 发送单个SSE消息
-     *
-     * @param userId  用户ID
-     * @param message 消息内容
-     * @param msgType 消息类型
+     * 发送单个 SSE 消息。
      */
-    public static void sendMsg(String userId, String message, SSEMsgType msgType) {
-        if (CollectionUtils.isEmpty(sseClients)) {
+    public static void sendMsg(String clientId, String message, SSEMsgType msgType) {
+        if (clientId == null || clientId.isBlank() || msgType == null || SSE_CLIENTS.isEmpty()) {
             return;
         }
 
-        if (sseClients.containsKey(userId)) {
-            SseEmitter sseEmitter = sseClients.get(userId);
-            sendEmitterMessage(sseEmitter, userId, message, msgType);
+        SseEmitter emitter = SSE_CLIENTS.get(clientId);
+        if (emitter != null) {
+            sendEmitterMessage(emitter, clientId, message, msgType);
         }
     }
 
     /**
-     * 发送SSE消息给所有用户
-     *
-     * @param message 消息内容
+     * 广播 SSE 消息给所有在线连接。
      */
     public static void sendMsgToAllUsers(String message) {
-        if (CollectionUtils.isEmpty(sseClients)) {
+        if (SSE_CLIENTS.isEmpty()) {
             return;
         }
-        sseClients.forEach((userId, sseEmitter) -> {
-            sendEmitterMessage(sseEmitter, userId, message, SSEMsgType.MESSAGE);
-        });
+        SSE_CLIENTS.forEach((clientId, emitter) -> sendEmitterMessage(emitter, clientId, message, SSEMsgType.MESSAGE));
     }
 
-    /*
-     * 通用发送SSE消息方法
-     * @param sseEmitter SSE发射器
-     * @param userId     用户ID
-     * @param message    消息内容
-     * @param msgType    消息类型
+    /**
+     * 实际发送 SSE 消息。
      */
-    private static void sendEmitterMessage(SseEmitter sseEmitter,
-                                           String userId,
+    private static void sendEmitterMessage(SseEmitter emitter,
+                                           String clientId,
                                            String message,
                                            SSEMsgType msgType) {
-        try {
-            SseEmitter.SseEventBuilder msgEvent = SseEmitter.event()
-                    .id(userId)
-                    .data(message)
-                    .name(msgType.type);
-            sseEmitter.send(msgEvent);
-        } catch (IOException e) {
-//            throw new RuntimeException(e);
-            log.info("SSE异常...{}", e.getMessage());
-            remove(userId);
+        if (emitter == null) {
+            return;
         }
 
+        try {
+            SseEmitter.SseEventBuilder msgEvent = SseEmitter.event()
+                    .id(clientId)
+                    .data(message)
+                    .name(msgType.type);
+            emitter.send(msgEvent);
+        } catch (IOException e) {
+            log.info("SSE发送失败, clientId={}, message={}", clientId, e.getMessage());
+            removeIfSame(clientId, emitter);
+            closeQuietly(emitter);
+        }
     }
 
     /**
-     * 超时回调函数
-     *
-     * @param userId 用户ID
-     * @return 超时回调函数
+     * 手动移除一个 SSE 连接。
      */
-    public static Runnable timeoutCallback(String userId) {
-        return () -> {
-            log.info("{} 连接超时...", userId);
-            // 移除用户连接
-            remove(userId);
-        };
+    public static void remove(String clientId) {
+        if (clientId == null || clientId.isBlank()) {
+            return;
+        }
+        log.info("SSE连接被移除, clientId={}", clientId);
+        SSE_CLIENTS.remove(clientId);
     }
 
     /**
-     * 完成回调函数
-     *
-     * @param userId 用户ID
-     * @return 完成回调函数
+     * 判断指定 SSE 客户端是否在线。
      */
-    public static Runnable completionCallback(String userId) {
-        return () -> {
-            log.info("{} 连接完成...", userId);
-            // 移除用户连接
-            remove(userId);
-        };
+    public static boolean isConnected(String clientId) {
+        return clientId != null && !clientId.isBlank() && SSE_CLIENTS.containsKey(clientId);
     }
 
     /**
-     * 错误回调函数
-     *
-     * @param userId 用户ID
-     * @return 错误回调函数
+     * 仅当当前 map 中仍然是该 emitter 时才移除，避免重连时误删新连接。
      */
-    public static Consumer<Throwable> errorCallback(String userId) {
-        return throwable -> {
-            log.error("{} 连接错误：{}", userId, throwable.getMessage());
-            // 移除用户连接
-            remove(userId);
-        };
+    private static void removeIfSame(String clientId, SseEmitter emitter) {
+        SSE_CLIENTS.computeIfPresent(clientId, (key, current) -> current == emitter ? null : current);
     }
 
     /**
-     * 移除用户连接
-     *
-     * @param userId 用户ID
+     * 安静关闭旧连接。
      */
-    public static void remove(String userId) {
-        // 移除用户
-        log.info("SSE连接被移除，移除的用户ID为：{}", userId);
-        sseClients.remove(userId);
-    }
-
-    /**
-     * 检查用户是否已连接
-     *
-     * @param userId 用户ID
-     * @return 是否已连接
-     */
-    public static boolean isConnected(String userId) {
-        return !CollectionUtils.isEmpty(sseClients) && sseClients.containsKey(userId);
-    }
-
-    private static void removeIfSame(String userId, SseEmitter emitter) {
-        sseClients.computeIfPresent(userId, (key, current) -> current == emitter ? null : current);
-    }
-
     private static void closeQuietly(SseEmitter emitter) {
         try {
             emitter.complete();
         } catch (Exception ignored) {
         }
     }
-
 }

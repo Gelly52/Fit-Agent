@@ -9,65 +9,71 @@ import reactor.core.publisher.Flux;
 
 import java.util.List;
 
+/**
+ * 聊天能力服务。
+ *
+ * 说明：
+ * 1. 正式聊天入口必须显式接收 AuthenticatedUserContext；
+ * 2. 服务层禁止再从 ThreadLocal 获取用户，避免异步线程上下文丢失；
+ * 3. SSE 推流由实现类在流式消费阶段统一处理。
+ */
 public interface ChatService {
 
     /**
-     * 测试聊天
+     * 测试同步聊天。
      *
      * @param prompt 提示词
-     * @return 回复
+     * @return 回复内容
      */
-    public String chatTest(String prompt);
+    String chatTest(String prompt);
 
     /**
-     * 测试流式聊天，返回JSON
+     * 测试流式聊天，返回完整 ChatResponse。
      *
      * @param prompt 提示词
-     * @return 回复
+     * @return 流式响应
      */
-    public Flux<ChatResponse> streamResponse(String prompt);
+    Flux<ChatResponse> streamResponse(String prompt);
 
     /**
-     * 测试流式聊天，返回String字符串
+     * 测试流式聊天，返回字符串分片。
      *
      * @param prompt 提示词
-     * @return 回复
+     * @return 文本分片流
      */
-    public Flux<String> streamStr(String prompt);
+    Flux<String> streamStr(String prompt);
 
     /**
-     * 流式聊天，与大模型交互
+     * 普通流式聊天。
      *
-     * @param chatEntity 聊天实体
+     * @param chatEntity 聊天请求体
+     * @param authenticatedUser 当前登录用户上下文
+     * @return 最终聊天结果
      */
-    public void doChat(ChatEntity chatEntity);
-
-    public ChatResponseEntity doChat(ChatEntity chatEntity, AuthenticatedUserContext authenticatedUser);
-
+    ChatResponseEntity doChat(ChatEntity chatEntity, AuthenticatedUserContext authenticatedUser);
 
     /**
-     * 流式聊天，与大模型交互，同时进行RAG知识库检索，汇总给大模型输出
+     * 基于手动检索出的 RAG 上下文进行流式聊天。
      *
-     * @param chatEntity 聊天实体
-     * @param ragContext RAG知识库上下文
+     * @param chatEntity 聊天请求体
+     * @param ragContext RAG 检索结果
+     * @param authenticatedUser 当前登录用户上下文
+     * @return 最终聊天结果
      */
-    public void doChatRagSearch(ChatEntity chatEntity, List<Document> ragContext);
-
-    public ChatResponseEntity doChatRagSearch(
+    ChatResponseEntity doChatRagSearch(
             ChatEntity chatEntity,
             List<Document> ragContext,
             AuthenticatedUserContext authenticatedUser
     );
 
-     /**
-      * 基于SearXng的实时联网搜索，将搜索结果添加到聊天实体中
-      *
-      * @param chatEntity 聊天实体
-      * @return 搜索结果
-      */
-    public void doInternetSearch(ChatEntity chatEntity);
-
-    public ChatResponseEntity doInternetSearch(
+    /**
+     * 基于联网搜索结果增强回答。
+     *
+     * @param chatEntity 聊天请求体
+     * @param authenticatedUser 当前登录用户上下文
+     * @return 最终聊天结果
+     */
+    ChatResponseEntity doInternetSearch(
             ChatEntity chatEntity,
             AuthenticatedUserContext authenticatedUser
     );

@@ -1,5 +1,6 @@
 package com.itgeo.controller;
 
+import com.itgeo.auth.AuthenticatedUserContext;
 import com.itgeo.auth.UserContextHolder;
 import com.itgeo.bean.ChatEntity;
 import com.itgeo.service.ChatService;
@@ -18,6 +19,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+/**
+ * 手动 RAG 文档上传与检索控制器。
+ *
+ * 说明：
+ * 1. 当前仅开放手动上传、手动检索、手动带上下文问答；
+ * 2. Phase 1 不会自动把 RAG 接入 /chat/doChat 或 /agent/execute。
+ */
 @RestController
 @RequestMapping("rag")
 public class RagController {
@@ -28,22 +36,38 @@ public class RagController {
     @Resource
     private ChatService chatService;
 
+    /**
+     * 上传用户自己的 RAG 文档。
+     */
     @PostMapping("/uploadRagDoc")
     public LeeResult uploadRagDoc(@RequestParam("file") MultipartFile file) {
-        List<Document> documentList = documentService.loadText(file.getResource(), file.getOriginalFilename());
+        Long userId = UserContextHolder.getRequired().getUserId();
+        List<Document> documentList = documentService.loadText(
+                file.getResource(),
+                file.getOriginalFilename(),
+                userId
+        );
         return LeeResult.ok(documentList);
     }
 
+    /**
+     * 手动检索当前用户的 RAG 文档片段。
+     */
     @GetMapping("/doSearch")
     public LeeResult doSearch(@RequestParam String question) {
-        return LeeResult.ok(documentService.doSearch(question));
+        Long userId = UserContextHolder.getRequired().getUserId();
+        return LeeResult.ok(documentService.doSearch(question, userId, 4));
     }
 
+    /**
+     * 手动 RAG 问答入口。
+     */
     @PostMapping("/search")
     public void search(@RequestBody ChatEntity chatEntity, HttpServletResponse response) {
-        List<Document> list = documentService.doSearch(chatEntity.getMessage());
+        AuthenticatedUserContext authenticatedUser = UserContextHolder.getRequired();
+        List<Document> documents = documentService.doSearch(chatEntity.getMessage(), authenticatedUser.getUserId(), 4);
         response.setCharacterEncoding("UTF-8");
-        chatEntity.setCurrentUserName(UserContextHolder.getRequired().getUserKey());
-        chatService.doChatRagSearch(chatEntity, list);
+        chatEntity.setCurrentUserName(authenticatedUser.getUserKey());
+        chatService.doChatRagSearch(chatEntity, documents, authenticatedUser);
     }
 }
