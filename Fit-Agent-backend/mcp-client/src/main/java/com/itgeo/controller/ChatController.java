@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.itgeo.auth.AuthenticatedUserContext;
 import com.itgeo.auth.UserContextHolder;
 import com.itgeo.bean.ChatEntity;
+import com.itgeo.bean.ChatResponseEntity;
 import com.itgeo.pojo.AgentRun;
 import com.itgeo.service.AgentRunService;
 import com.itgeo.service.ChatService;
@@ -11,10 +12,7 @@ import com.itgeo.service.ChatSessionService;
 import com.itgeo.utils.LeeResult;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 /**
  * 普通聊天控制器。
@@ -54,8 +52,8 @@ public class ChatController {
         }
 
         chatEntity.setCurrentUserName(authenticatedUser.getUserKey());
-        chatService.doChat(chatEntity, authenticatedUser);
-        return LeeResult.ok();
+        ChatResponseEntity result = chatService.doChatWithEnhancers(chatEntity, authenticatedUser);
+        return LeeResult.ok(result);
     }
 
     /**
@@ -76,5 +74,27 @@ public class ChatController {
         }
 
         return chatSessionService.existsByBotMsgId(botMsgId);
+    }
+
+    /**
+     * 查询当前登录用户的聊天历史记录。
+     */
+    @GetMapping("/records")
+    public LeeResult getRecords(
+            @RequestParam(required = false) String who,
+            @RequestParam(required = false) Long sessionId,
+            @RequestParam(required = false, defaultValue = "20") Integer limit) {
+        // 1.获取当前登录用户
+        AuthenticatedUserContext authenticatedUser = UserContextHolder.getRequired();
+
+        // who 仅用于兼容前端已有调用，真实查询身份仍以当前登录用户为准
+
+        return LeeResult.ok(
+                chatSessionService.getChatRecords(
+                        authenticatedUser.getUserId(),
+                        sessionId,
+                        limit
+                )
+        );
     }
 }

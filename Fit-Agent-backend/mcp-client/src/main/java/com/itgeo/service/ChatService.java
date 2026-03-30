@@ -77,4 +77,33 @@ public interface ChatService {
             ChatEntity chatEntity,
             AuthenticatedUserContext authenticatedUser
     );
+
+    public ChatResponseEntity doAgentChat(
+            ChatEntity chatEntity,
+            Long chatSessionId,
+            Long assistantMessageId,
+            AuthenticatedUserContext authenticatedUser
+    );
+
+    public ChatResponseEntity doAgentInternetSearch(
+            ChatEntity chatEntity,
+            Long chatSessionId,
+            Long assistantMessageId,
+            AuthenticatedUserContext authenticatedUser
+    );
+
+    ChatResponseEntity doChatWithEnhancers(
+            ChatEntity chatEntity,
+            AuthenticatedUserContext authenticatedUser
+    );
+
+    ChatResponseEntity doAgentWithEnhancers(
+            ChatEntity chatEntity,
+            Long chatSessionId,
+            Long assistantMessageId,
+            AuthenticatedUserContext authenticatedUser
+    );
+
+
+
 }

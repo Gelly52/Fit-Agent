@@ -3,6 +3,7 @@ package com.itgeo.controller;
 import com.itgeo.auth.AuthenticatedUserContext;
 import com.itgeo.auth.UserContextHolder;
 import com.itgeo.bean.ChatEntity;
+import com.itgeo.bean.ChatResponseEntity;
 import com.itgeo.service.ChatService;
 import com.itgeo.service.DocumentService;
 import com.itgeo.utils.LeeResult;
@@ -63,11 +64,48 @@ public class RagController {
      * 手动 RAG 问答入口。
      */
     @PostMapping("/search")
-    public void search(@RequestBody ChatEntity chatEntity, HttpServletResponse response) {
+    public LeeResult search(@RequestBody ChatEntity chatEntity, HttpServletResponse response) {
         AuthenticatedUserContext authenticatedUser = UserContextHolder.getRequired();
-        List<Document> documents = documentService.doSearch(chatEntity.getMessage(), authenticatedUser.getUserId(), 4);
+        List<Document> documents = documentService.doSearch(
+                chatEntity.getMessage(),
+                authenticatedUser.getUserId(),
+                4
+        );
         response.setCharacterEncoding("UTF-8");
         chatEntity.setCurrentUserName(authenticatedUser.getUserKey());
-        chatService.doChatRagSearch(chatEntity, documents, authenticatedUser);
+        ChatResponseEntity result = chatService.doChatRagSearch(
+                chatEntity,
+                documents,
+                authenticatedUser
+        );
+        return LeeResult.ok(result);
+    }
+
+    /**
+     * 查询当前用户已上传的 RAG 文档列表。
+     */
+    @GetMapping("/docs")
+    public LeeResult getUploadedDocs() {
+        // 1.获取当前用户：
+        Long userId = UserContextHolder.getRequired().getUserId();
+
+        // 2.调用 service：
+        return LeeResult.ok(documentService.listUserDocuments(userId));
+    }
+
+    /**
+     * 兼容旧调用方式的 RAG 配置读取入口。
+     */
+    @PostMapping("/config")
+    public LeeResult ragConfig() {
+        return LeeResult.ok(documentService.getRagConfig());
+    }
+
+    /**
+     * 查询当前手动 RAG 配置。
+     */
+    @GetMapping("/config")
+    public LeeResult getRagConfig() {
+        return LeeResult.ok(documentService.getRagConfig());
     }
 }

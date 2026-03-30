@@ -1,10 +1,7 @@
 package com.itgeo.service.impl;
 
 import cn.hutool.json.JSONUtil;
-import com.itgeo.bean.AgentExecuteContext;
-import com.itgeo.bean.AgentFinishResponse;
-import com.itgeo.bean.AgentStepEvent;
-import com.itgeo.bean.ChatResponseEntity;
+import com.itgeo.bean.*;
 import com.itgeo.enums.SSEMsgType;
 import com.itgeo.service.AgentAsyncService;
 import com.itgeo.service.AgentRunService;
@@ -13,11 +10,13 @@ import com.itgeo.service.ChatSessionService;
 import com.itgeo.utils.SSEServer;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.document.Document;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Agent 异步工作流执行服务实现。
@@ -105,12 +104,7 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
             agentRunService.markStepRunning(context.getRunId(), 5, "{\"phase\":\"finish\"}");
             pushStepEvent(context, 5, resolveStepName(5), "running", "开始回填最终结果");
 
-            // 4. 回填 assistant 占位消息，保证刷新页面后仍能看到最终回答。
-            chatSessionService.finishAssistantMessage(
-                    context.getAssistantMessageId(),
-                    response.getMessage(),
-                    normalizeSourcesJson(finish.getSources())
-            );
+
             agentRunService.markStepSuccess(context.getRunId(), 5, "{\"status\":\"ok\"}");
             pushStepEvent(context, 5, resolveStepName(5), "success", "任务回传完成");
 
@@ -143,7 +137,9 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
                         context.getChatEntity().getBotMsgId(),
                         context.getRunId(),
                         "failed",
-                        null
+                        null,
+                        context.getChatSessionId(),
+                        context.getChatEntity() == null ? null : context.getChatEntity().getSessionCode()
                 );
                 SSEServer.sendMsg(
                         context.getAuthenticatedUser().getSseClientId(),
@@ -164,12 +160,30 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
      * - 其他场景默认走普通问答。
      */
     private ChatResponseEntity executeCoreAbility(AgentExecuteContext context) {
-        String message = context.getChatEntity().getMessage();
-        if (message != null && (message.contains("联网") || message.contains("搜索"))) {
-            return chatService.doInternetSearch(context.getChatEntity(), context.getAuthenticatedUser());
-        }
-        return chatService.doChat(context.getChatEntity(), context.getAuthenticatedUser());
+        return chatService.doAgentWithEnhancers(
+                context.getChatEntity(),
+                context.getChatSessionId(),
+                context.getAssistantMessageId(),
+                context.getAuthenticatedUser()
+        );
     }
+//    private ChatResponseEntity executeCoreAbility(AgentExecuteContext context) {
+//        String message = context.getChatEntity().getMessage();
+//        if (message != null && (message.contains("联网") || message.contains("搜索"))) {
+//            return chatService.doAgentInternetSearch(
+//                    context.getChatEntity(),
+//                    context.getChatSessionId(),
+//                    context.getAssistantMessageId(),
+//                    context.getAuthenticatedUser()
+//            );
+//        }
+//        return chatService.doAgentChat(
+//                context.getChatEntity(),
+//                context.getChatSessionId(),
+//                context.getAssistantMessageId(),
+//                context.getAuthenticatedUser()
+//        );
+//    }
 
     /**
      * 将聊天返回结果转换为 AgentFinishResponse，便于 run 结果落库。
@@ -183,7 +197,9 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
                 response.getBotMsgId(),
                 context.getRunId(),
                 "success",
-                null
+                response.getSources(),
+                response.getChatSessionId(),
+                response.getSessionCode()
         );
     }
 
@@ -233,5 +249,35 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
         if (lockKey != null && !lockKey.isBlank()) {
             stringRedisTemplate.delete(lockKey);
         }
+    }
+
+    //RAG：
+    private Object buildRagSources(List<Document> ragContext) {
+        if (ragContext == null) {
+            return List.of();
+        }
+        return ragContext.stream().map(doc -> {
+            java.util.Map<String, Object> item = new java.util.HashMap<>();
+            item.put("title", doc.getMetadata() != null ? doc.getMetadata().getOrDefault("fileName", "知识库来源") : "知识库来源");
+            item.put("snippet", doc.getText());
+            item.put("url", "");
+            item.put("extra", "");
+            return item;
+        }).collect(Collectors.toList());
+    }
+
+    //联网：
+    private Object buildInternetSources(List<SearchResult> searchResults) {
+        if (searchResults == null) {
+            return List.of();
+        }
+        return searchResults.stream().map(result -> {
+            java.util.Map<String, Object> item = new java.util.HashMap<>();
+            item.put("title", result.getTitle() == null || result.getTitle().isBlank() ? "联网来源" : result.getTitle());
+            item.put("snippet", result.getContent());
+            item.put("url", result.getUrl());
+            item.put("extra", "");
+            return item;
+        }).collect(Collectors.toList());
     }
 }

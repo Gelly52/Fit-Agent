@@ -73,8 +73,16 @@
     <left-sidebar
       :class="{ 'mobile-drawer-open': mobileLeftOpen }"
       :active-view="activeView"
+      :chat-expanded="chatExpanded"
+      :chat-session-list="chatSessionList"
+      :active-chat-session-id="activeChatSessionId"
+      :chat-records-loading="chatRecordsLoading"
+      :conversation-busy="isSending || isStreaming"
       @execute-task="handleDirectTask"
       @switch-view="handleSwitchView"
+      @toggle-chat-expand="handleToggleChatExpand"
+      @select-chat-session="handleSelectChatSession"
+      @create-chat="handleCreateChat"
     />
 
     <!-- Main Center -->
@@ -273,9 +281,16 @@ export default {
       currentUserInfo: null,
       isLoggingOut: false,
       activeView: "chat",
+      chatExpanded: false,
+      chatSessionList: [],
+      activeChatSessionId: null,
+      currentSessionCode: null,
+      currentSessionSceneType: null,
+      chatRecordsLoading: false,
+      chatRecordsLoaded: false,
       chatList: [],
       draftMessage: "",
-      internetSearchSelected: false,
+
       knowledgeSearchSelected: false,
       agentModeSelected: true,
       imageReadSelected: false,
@@ -316,16 +331,14 @@ export default {
   },
   computed: {
     activeModeLabel() {
-      if (this.agentModeSelected) {
-        return "Agent";
-      }
+      var mainLabel = this.agentModeSelected ? "Agent" : "普通问答";
       if (this.knowledgeSearchSelected) {
-        return "知识库增强";
+        return mainLabel + " + 知识库增强";
       }
       if (this.internetSearchSelected) {
-        return "联网补充";
+        return mainLabel + " + 联网补充";
       }
-      return "普通问答";
+      return mainLabel;
     },
     connectionBadgeText() {
       if (this.isStreaming) {
@@ -431,6 +444,72 @@ export default {
       } else if (viewName === "upload") {
         this.fetchUploadedDocs();
       }
+    },
+    async handleToggleChatExpand() {
+      this.activeView = "chat";
+      if (this.chatExpanded) {
+        this.chatExpanded = false;
+        return;
+      }
+
+      this.chatExpanded = true;
+      if (!this.chatRecordsLoaded && !this.chatRecordsLoading) {
+        await this.fetchChatRecords();
+      }
+    },
+    handleSelectChatSession(sessionId) {
+      if (this.isSending || this.isStreaming) {
+        this.showUiMessage("error", "正在执行任务，请稍后再切换聊天记录。");
+        return;
+      }
+
+      var targetSession = null;
+      for (var i = 0; i < this.chatSessionList.length; i++) {
+        if (this.chatSessionList[i].sessionId == sessionId) {
+          targetSession = this.chatSessionList[i];
+          break;
+        }
+      }
+
+      if (!targetSession) {
+        return;
+      }
+
+      var mappedChatList = this.mapSessionMessagesToChatList(
+        targetSession.messages
+      );
+
+      this.activeView = "chat";
+      this.activeChatSessionId = targetSession.sessionId;
+      this.currentSessionCode = targetSession.sessionCode || null;
+      this.currentSessionSceneType = targetSession.sceneType || null;
+      this.applyChatMode(this.resolvePreferredModeFromSession(targetSession));
+      this.chatList = mappedChatList;
+      this.agentSteps = [];
+      this.botMsgId = null;
+      this.showBackToBottom = false;
+      this.knowledgeSources = this.resolveChatHistorySources(mappedChatList);
+      this.closeMobileDrawers();
+      this.scrollToBottom(true);
+    },
+    handleCreateChat() {
+      if (this.isSending || this.isStreaming) {
+        this.showUiMessage("error", "正在执行任务，请稍后再新建聊天。");
+        return;
+      }
+
+      this.activeView = "chat";
+      this.activeChatSessionId = null;
+      this.currentSessionCode = null;
+      this.currentSessionSceneType = null;
+      this.chatList = [];
+      this.agentSteps = [];
+      this.draftMessage = "";
+      this.botMsgId = null;
+      this.showBackToBottom = false;
+      this.knowledgeSources = [];
+      this.closeMobileDrawers();
+      this.scrollToBottom(true);
     },
     handleTrainingSubmit(formData) {
       var me = this;
@@ -543,6 +622,236 @@ export default {
         .catch(function () {
           // API not available, keep empty
         });
+    },
+    fetchChatRecords() {
+      var stableUserKey = this.resolveStableUserKey();
+      if (!stableUserKey) {
+        this.chatSessionList = [];
+        this.chatRecordsLoaded = false;
+        return Promise.resolve([]);
+      }
+
+      var me = this;
+      this.chatRecordsLoading = true;
+      return doctorApi
+        .getRecords(stableUserKey)
+        .then(function (res) {
+          var data = me.unwrapApiData(res, "加载聊天记录失败");
+          me.chatSessionList = me.normalizeChatSessions(data);
+          me.chatRecordsLoaded = true;
+          return me.chatSessionList;
+        })
+        .catch(function (error) {
+          console.error("加载聊天记录失败:", error);
+          me.chatSessionList = [];
+          me.chatRecordsLoaded = false;
+          me.showUiMessage(
+            "error",
+            error && error.message
+              ? error.message
+              : "加载聊天记录失败，请稍后重试。"
+          );
+          return [];
+        })
+        .finally(function () {
+          me.chatRecordsLoading = false;
+        });
+    },
+    normalizeChatSessions(recordData) {
+      var sessions = [];
+      if (Array.isArray(recordData)) {
+        sessions = recordData.slice();
+      } else if (recordData && Array.isArray(recordData.sessions)) {
+        sessions = recordData.sessions.slice();
+      }
+
+      var me = this;
+      return sessions
+        .map(function (session) {
+          var messages =
+            session && Array.isArray(session.messages)
+              ? session.messages.slice()
+              : [];
+          var updatedAt =
+            (session && (session.updatedAt || session.createdAt)) ||
+            (messages.length > 0
+              ? messages[messages.length - 1].createdAt || null
+              : null);
+
+          return {
+            sessionId: session ? session.sessionId : null,
+            sessionCode:
+              session && session.sessionCode
+                ? String(session.sessionCode)
+                : null,
+            sceneType:
+              session && session.sceneType
+                ? String(session.sceneType).toLowerCase()
+                : null,
+            lastBotMsgId:
+              session && session.lastBotMsgId
+                ? session.lastBotMsgId
+                : me.resolveLastSessionBotMsgId(messages),
+            title: me.buildChatSessionTitle(session, messages),
+            updatedAt: updatedAt,
+            updatedAtLabel: me.formatChatSessionTime(updatedAt),
+            messages: messages,
+          };
+        })
+        .filter(function (session) {
+          return session.sessionId != null;
+        })
+        .sort(function (a, b) {
+          var aDate = me.resolveChatSessionDate(a.updatedAt);
+          var bDate = me.resolveChatSessionDate(b.updatedAt);
+          var aTime = aDate ? aDate.getTime() : 0;
+          var bTime = bDate ? bDate.getTime() : 0;
+          return bTime - aTime;
+        });
+    },
+    buildChatSessionTitle(session, messages) {
+      var explicitTitle =
+        session && session.title ? String(session.title).trim() : "";
+      if (explicitTitle) {
+        return explicitTitle;
+      }
+
+      var safeMessages = Array.isArray(messages) ? messages : [];
+      for (var i = 0; i < safeMessages.length; i++) {
+        var message = safeMessages[i];
+        if (!message || message.role !== "user") {
+          continue;
+        }
+
+        var content =
+          message.content == null
+            ? ""
+            : String(message.content).replace(/\s+/g, " ").trim();
+        if (!content) {
+          continue;
+        }
+
+        return content.length > 18 ? content.slice(0, 18) + "..." : content;
+      }
+
+      return "未命名会话";
+    },
+    formatChatSessionTime(rawValue) {
+      var date = this.resolveChatSessionDate(rawValue);
+      if (!date) {
+        return "";
+      }
+
+      var month = String(date.getMonth() + 1).padStart(2, "0");
+      var day = String(date.getDate()).padStart(2, "0");
+      var hours = String(date.getHours()).padStart(2, "0");
+      var minutes = String(date.getMinutes()).padStart(2, "0");
+      return month + "-" + day + " " + hours + ":" + minutes;
+    },
+    resolveChatSessionDate(rawValue) {
+      if (!rawValue) {
+        return null;
+      }
+
+      var date = rawValue instanceof Date ? rawValue : new Date(rawValue);
+      if (isNaN(date.getTime())) {
+        return null;
+      }
+
+      return date;
+    },
+    resolveLastSessionBotMsgId(messages) {
+      if (!Array.isArray(messages)) {
+        return null;
+      }
+
+      for (var i = messages.length - 1; i >= 0; i--) {
+        if (messages[i] && messages[i].botMsgId) {
+          return messages[i].botMsgId;
+        }
+      }
+
+      return null;
+    },
+    resolvePreferredModeFromSession(session) {
+      var sceneType =
+        session && session.sceneType === "agent" ? "agent" : "chat";
+      var sourceType = "chat";
+
+      var messages =
+        session && Array.isArray(session.messages) ? session.messages : [];
+      for (var i = messages.length - 1; i >= 0; i--) {
+        var message = messages[i];
+        var currentSourceType =
+          message && message.sourceType
+            ? String(message.sourceType).toLowerCase()
+            : "";
+
+        if (
+          currentSourceType === "rag" ||
+          currentSourceType === "internet" ||
+          currentSourceType === "chat"
+        ) {
+          sourceType = currentSourceType;
+          break;
+        }
+      }
+
+      return {
+        sceneType: sceneType,
+        sourceType: sourceType,
+      };
+    },
+    applyChatMode(modeState) {
+      var sceneType =
+        modeState && modeState.sceneType
+          ? String(modeState.sceneType).toLowerCase()
+          : "chat";
+      var sourceType =
+        modeState && modeState.sourceType
+          ? String(modeState.sourceType).toLowerCase()
+          : "chat";
+
+      this.agentModeSelected = sceneType === "agent";
+      this.imageReadSelected = false;
+      this.knowledgeSearchSelected = sourceType === "rag";
+      this.internetSearchSelected = sourceType === "internet";
+    },
+    resolveExpectedSessionSceneType() {
+      return this.agentModeSelected ? "agent" : "chat";
+    },
+    applyServerSessionMeta(payload, fallbackSceneType) {
+      if (!payload || typeof payload !== "object") {
+        return;
+      }
+
+      if (payload.chatSessionId != null) {
+        this.activeChatSessionId = payload.chatSessionId;
+      }
+
+      if (payload.sessionCode) {
+        this.currentSessionCode = String(payload.sessionCode);
+      }
+
+      var nextSceneType =
+        payload.sceneType != null && payload.sceneType !== ""
+          ? String(payload.sceneType).toLowerCase()
+          : fallbackSceneType
+          ? String(fallbackSceneType).toLowerCase()
+          : null;
+      if (nextSceneType) {
+        this.currentSessionSceneType = nextSceneType;
+      }
+    },
+    refreshChatRecordsIfNeeded() {
+      if (
+        (!this.chatExpanded && !this.chatRecordsLoaded) ||
+        this.chatRecordsLoading
+      ) {
+        return Promise.resolve(this.chatSessionList);
+      }
+
+      return this.fetchChatRecords();
     },
     showUiMessage(type, text) {
       if (this.$message && typeof this.$message[type] === "function") {
@@ -768,11 +1077,23 @@ export default {
                   me.extractSourcesFromResponse(chatResponse);
                 var matched = false;
 
+                me.applyServerSessionMeta(
+                  chatResponse,
+                  me.currentSessionSceneType ||
+                    me.resolveExpectedSessionSceneType()
+                );
+
                 for (var i = 0; i < me.chatList.length; i++) {
                   var chatItem = me.chatList[i];
                   if (chatItem.botMsgId == botMsgId) {
                     chatItem.content = marked.parse(message || "");
                     chatItem.sources = normalizedSources;
+                    chatItem.sourceType =
+                      chatResponse.sourceType || chatItem.sourceType || null;
+                    chatItem.sessionCode =
+                      chatResponse.sessionCode || chatItem.sessionCode || null;
+                    chatItem.sceneType =
+                      chatResponse.sceneType || chatItem.sceneType || null;
                     matched = true;
                   }
                 }
@@ -786,11 +1107,20 @@ export default {
                     botMsgId: botMsgId,
                     createdAt: new Date().toISOString(),
                     sources: normalizedSources,
+                    sourceType: chatResponse.sourceType || null,
+                    sessionCode:
+                      chatResponse.sessionCode || me.currentSessionCode || null,
+                    sceneType:
+                      chatResponse.sceneType ||
+                      me.currentSessionSceneType ||
+                      null,
                   });
                 }
 
                 if (normalizedSources && normalizedSources.length > 0) {
                   me.knowledgeSources = normalizedSources;
+                } else {
+                  me.knowledgeSources = [];
                 }
 
                 if (me.agentSteps.length > 0) {
@@ -798,6 +1128,7 @@ export default {
                 }
 
                 me.guidanceMessage = "本轮任务已完成，可继续发起新任务。";
+                me.refreshChatRecordsIfNeeded();
               } catch (error) {
                 console.error("解析finish事件失败:", error);
                 me.guidanceMessage = "任务已结束，但结果解析失败，请稍后重试。";
@@ -926,6 +1257,118 @@ export default {
     },
     extractSourcesFromResponse(chatResponse) {
       return extractSourcesFromResponseUtil(chatResponse);
+    },
+    parseRecordSources(sourcesJson) {
+      if (!sourcesJson) {
+        return [];
+      }
+
+      var parsedSources = sourcesJson;
+      if (typeof sourcesJson === "string") {
+        try {
+          parsedSources = JSON.parse(sourcesJson);
+        } catch (error) {
+          return [];
+        }
+      }
+
+      if (Array.isArray(parsedSources)) {
+        return extractSourcesFromResponseUtil({ sources: parsedSources });
+      }
+
+      if (parsedSources && typeof parsedSources === "object") {
+        var normalizedCollection =
+          parsedSources.sources ||
+          parsedSources.items ||
+          parsedSources.list ||
+          parsedSources.references ||
+          parsedSources.citations ||
+          parsedSources.docs ||
+          parsedSources.sourceList ||
+          parsedSources.sourceDocs;
+
+        if (Array.isArray(normalizedCollection)) {
+          return extractSourcesFromResponseUtil({
+            sources: normalizedCollection,
+          });
+        }
+
+        return extractSourcesFromResponseUtil({ sources: [parsedSources] });
+      }
+
+      if (typeof parsedSources === "string") {
+        return extractSourcesFromResponseUtil({ sources: [parsedSources] });
+      }
+
+      return [];
+    },
+    mapSessionMessagesToChatList(messages) {
+      if (!Array.isArray(messages)) {
+        return [];
+      }
+
+      var me = this;
+      return messages
+        .slice()
+        .sort(function (a, b) {
+          var aSeq = a && a.seqNo != null ? Number(a.seqNo) : NaN;
+          var bSeq = b && b.seqNo != null ? Number(b.seqNo) : NaN;
+          if (!isNaN(aSeq) && !isNaN(bSeq) && aSeq !== bSeq) {
+            return aSeq - bSeq;
+          }
+
+          var aDate = me.resolveChatSessionDate(a && a.createdAt);
+          var bDate = me.resolveChatSessionDate(b && b.createdAt);
+          var aTime = aDate ? aDate.getTime() : 0;
+          var bTime = bDate ? bDate.getTime() : 0;
+          return aTime - bTime;
+        })
+        .map(function (message, index) {
+          return me.mapRecordToChatItem(message, index);
+        })
+        .filter(function (item) {
+          return !!item;
+        });
+    },
+    mapRecordToChatItem(message, index) {
+      if (!message) {
+        return null;
+      }
+
+      var role = message.role === "assistant" ? "assistant" : "user";
+      var rawContent = message.content == null ? "" : String(message.content);
+      return {
+        id:
+          message.messageId != null
+            ? String(message.messageId)
+            : "record-" + index + "-" + this.generateRandomId(6),
+        content: role === "assistant" ? marked.parse(rawContent) : rawContent,
+        userName: role === "assistant" ? "bot" : this.currentUserName || "用户",
+        chatType: role === "assistant" ? "bot" : "user",
+        botMsgId: message.botMsgId || null,
+        createdAt: message.createdAt || new Date().toISOString(),
+        sessionCode: message.sessionCode || null,
+        sceneType: message.sceneType || null,
+        sourceType: message.sourceType || null,
+        sources:
+          role === "assistant"
+            ? this.parseRecordSources(message.sourcesJson)
+            : [],
+      };
+    },
+    resolveChatHistorySources(chatItems) {
+      if (!Array.isArray(chatItems)) {
+        return [];
+      }
+
+      for (var i = chatItems.length - 1; i >= 0; i--) {
+        var item = chatItems[i];
+        if (item && Array.isArray(item.sources) && item.sources.length > 0) {
+          return item.sources;
+        }
+      }
+
+      return [];
     },
     handleChatScroll() {
       var chatMessages = document.getElementById("chat-messages");
@@ -1279,16 +1722,26 @@ export default {
         this.agentSteps = [];
       }
 
+      var agentModeSelected = this.agentModeSelected;
+      var internetSearchSelected = this.internetSearchSelected;
+      var knowledgeSearchSelected = this.knowledgeSearchSelected;
+      var currentSourceType = knowledgeSearchSelected
+        ? "rag"
+        : internetSearchSelected
+        ? "internet"
+        : "chat";
+      var expectedSceneType = this.resolveExpectedSessionSceneType();
       var singleChat = {
         currentUserName: currentUserName,
         message: pendingMsg,
         botMsgId: botMsgId,
+        sessionCode: this.currentSessionCode || null,
+        ragEnabled: knowledgeSearchSelected,
+        internetEnabled: internetSearchSelected,
       };
 
-      var agentModeSelected = this.agentModeSelected;
-      var internetSearchSelected = this.internetSearchSelected;
-      var knowledgeSearchSelected = this.knowledgeSearchSelected;
       var requestPromise = null;
+      var me = this;
 
       if (agentModeSelected) {
         console.log("agentExecute");
@@ -1296,15 +1749,17 @@ export default {
           console.log("agent endpoint not available, fallback to doChat");
           return doctorApi.doChat(singleChat);
         });
-      } else if (knowledgeSearchSelected && !internetSearchSelected) {
-        console.log("ragSearch");
-        requestPromise = doctorApi.ragSearch(singleChat);
-      } else if (!knowledgeSearchSelected && internetSearchSelected) {
-        console.log("internetSearch");
-        requestPromise = doctorApi.internetSearch(singleChat);
       } else {
         console.log("doChat");
         requestPromise = doctorApi.doChat(singleChat);
+      }
+
+      if (requestPromise && typeof requestPromise.then === "function") {
+        requestPromise = requestPromise.then(function (res) {
+          var data = me.unwrapApiData(res, "任务请求失败，请稍后重试！");
+          me.applyServerSessionMeta(data, expectedSceneType);
+          return res;
+        });
       }
 
       if (requestPromise && typeof requestPromise.catch === "function") {
@@ -1327,6 +1782,9 @@ export default {
         userName: currentUserName || "用户",
         chatType: "user",
         createdAt: new Date().toISOString(),
+        sessionCode: this.currentSessionCode || null,
+        sceneType: expectedSceneType,
+        sourceType: currentSourceType,
       });
 
       this.draftMessage = "";
@@ -1370,7 +1828,6 @@ export default {
 
       if (this.internetSearchSelected) {
         this.knowledgeSearchSelected = false;
-        this.agentModeSelected = false;
         this.imageReadSelected = false;
       }
 
@@ -1384,7 +1841,6 @@ export default {
 
       if (this.knowledgeSearchSelected) {
         this.internetSearchSelected = false;
-        this.agentModeSelected = false;
         this.imageReadSelected = false;
       }
 
@@ -1397,8 +1853,6 @@ export default {
       this.agentModeSelected = !agentModeSelected;
 
       if (this.agentModeSelected) {
-        this.internetSearchSelected = false;
-        this.knowledgeSearchSelected = false;
         this.imageReadSelected = false;
       }
 

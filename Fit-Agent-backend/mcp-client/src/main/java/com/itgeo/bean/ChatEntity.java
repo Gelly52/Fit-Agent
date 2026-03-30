@@ -15,4 +15,6 @@ public class ChatEntity {
     private String botMsgId;
     private String sessionCode;
     private String clientRequestId;
+    private Boolean ragEnabled;
+    private Boolean internetEnabled;
 }

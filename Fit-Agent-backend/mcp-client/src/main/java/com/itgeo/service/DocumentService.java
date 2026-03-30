@@ -1,5 +1,7 @@
 package com.itgeo.service;
 
+import com.itgeo.bean.RagConfigResponse;
+import com.itgeo.bean.RagDocumentItem;
 import org.springframework.ai.document.Document;
 import org.springframework.core.io.Resource;
 
@@ -34,4 +36,15 @@ public interface DocumentService {
      * @return 检索结果
      */
     List<Document> doSearch(String question, Long userId, Integer topK);
+
+    /**
+     * 查询当前用户已上传的 RAG 文档列表。
+     */
+    List<RagDocumentItem> listUserDocuments(Long userId);
+
+    /**
+     * 获取当前手动 RAG 配置。
+     */
+    RagConfigResponse getRagConfig();
+
 }

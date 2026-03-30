@@ -3,6 +3,7 @@ package com.itgeo.controller;
 import com.itgeo.auth.AuthenticatedUserContext;
 import com.itgeo.auth.UserContextHolder;
 import com.itgeo.bean.ChatEntity;
+import com.itgeo.bean.ChatResponseEntity;
 import com.itgeo.service.ChatService;
 import com.itgeo.service.SearXngService;
 import com.itgeo.utils.LeeResult;
@@ -37,10 +38,11 @@ public class InternetController {
      * 发起联网搜索增强问答。
      */
     @PostMapping("/search")
-    public void search(@RequestBody ChatEntity chatEntity, HttpServletResponse response) {
+    public LeeResult search(@RequestBody ChatEntity chatEntity, HttpServletResponse response) {
         response.setCharacterEncoding("UTF-8");
         AuthenticatedUserContext authenticatedUser = UserContextHolder.getRequired();
         chatEntity.setCurrentUserName(authenticatedUser.getUserKey());
-        chatService.doInternetSearch(chatEntity, authenticatedUser);
+        ChatResponseEntity result = chatService.doInternetSearch(chatEntity, authenticatedUser);
+        return LeeResult.ok(result);
     }
 }

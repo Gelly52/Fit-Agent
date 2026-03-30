@@ -1,5 +1,11 @@
 package com.itgeo.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.itgeo.bean.RagConfigResponse;
+import com.itgeo.bean.RagDocumentItem;
+import com.itgeo.mapper.RagDocumentMapper;
+
+import com.itgeo.pojo.RagDocument;
 import com.itgeo.service.DocumentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +39,8 @@ public class DocumentServiceImpl implements DocumentService {
 
     private final RedisVectorStore redisVectorStore;
 
+    private final RagDocumentMapper ragDocumentMapper;
+
     @Override
     public List<Document> loadText(Resource resource, String fileName, Long userId) {
         if (userId == null) {
@@ -54,6 +62,16 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         redisVectorStore.add(splitDocuments);
+
+        // 文档索引入库
+        RagDocument ragDocument = new RagDocument();
+        ragDocument.setUserId(userId);
+        ragDocument.setFileName(safeFileName);
+        ragDocument.setSourceCount(documentList.size());
+        ragDocument.setChunkCount(splitDocuments.size());
+        ragDocument.setStatus("READY");
+        ragDocumentMapper.insert(ragDocument);
+
         log.info("RAG文档入库完成, userId={}, fileName={}, sourceCount={}, chunkCount={}",
                 userId,
                 safeFileName,
@@ -93,6 +111,42 @@ public class DocumentServiceImpl implements DocumentService {
                 rawResults.size(),
                 filteredResults.size());
         return filteredResults;
+    }
+
+    @Override
+    public List<RagDocumentItem> listUserDocuments(Long userId) {
+        // 1. 校验 userId
+        if (userId == null) {
+            throw new IllegalArgumentException("userId不能为空");
+        }
+
+        // 2. 查询当前用户文档
+        List<RagDocument> ragDocuments = ragDocumentMapper.selectList(new LambdaQueryWrapper<RagDocument>()
+                .eq(RagDocument::getUserId, userId)
+                .orderByDesc(RagDocument::getCreatedAt));
+
+        // 3. 把 List<RagDocument> 转成 List<RagDocumentItem>
+        List<RagDocumentItem> documentItems = ragDocuments.stream().map(ragDocument -> new RagDocumentItem(
+                        ragDocument.getId(),
+                        ragDocument.getFileName(),
+                        ragDocument.getSourceCount(),
+                        ragDocument.getChunkCount(),
+                        ragDocument.getStatus(),
+                        ragDocument.getCreatedAt()))
+                .collect(Collectors.toList());
+        // 4. 返回列表
+        return documentItems;
+    }
+
+    @Override
+    public RagConfigResponse getRagConfig() {
+        RagConfigResponse response = new RagConfigResponse();
+        response.setDefaultTopK(DEFAULT_TOP_K);
+        response.setMaxTopK(MAX_TOP_K);
+        response.setFilterScanLimit(FILTER_SCAN_LIMIT);
+        response.setUserIsolationEnabled(true);
+        response.setIsolationStrategy("scan_then_filter_by_metadata_userId");
+        return response;
     }
 
     /**

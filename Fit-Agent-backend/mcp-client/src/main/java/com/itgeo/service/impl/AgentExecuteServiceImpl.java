@@ -82,10 +82,15 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
         // 1. 先做数据库幂等检查：已存在则直接返回已有 run 信息。
         AgentRun existing = agentRunService.findByUserIdAndBotMsgId(userId, botMsgId);
         if (existing != null) {
+            ChatSession existingSession = chatSessionService.findByIdAndUserId(
+                    existing.getChatSessionId(),
+                    userId
+            );
+            String existingSessionCode = existingSession == null ? null : existingSession.getSessionCode();
             return new AgentExecuteAckResponse(
                     existing.getId(),
                     existing.getChatSessionId(),
-                    chatEntity.getSessionCode(),
+                    existingSessionCode,
                     botMsgId,
                     existing.getStatus(),
                     true
@@ -108,17 +113,22 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
             lockAcquired = true;
 
             // 3. 创建会话、写入用户消息、创建 assistant 占位消息。
-            ChatSession session = chatSessionService.createAgentSession(
+            ChatSession session = chatSessionService.resolveOrCreateSession(
                     userId,
+                    chatEntity.getSessionCode(),
+                    "agent",
                     chatEntity.getMessage(),
                     botMsgId
             );
-            chatSessionService.appendUserMessage(session.getId(), chatEntity.getMessage(), "agent");
-            Long assistantMessageId = chatSessionService.createAssistantPlaceholder(session.getId(), botMsgId, "agent");
+            String sourceType = resolveSourceType(chatEntity);
+            chatSessionService.appendUserMessage(session.getId(), chatEntity.getMessage(), sourceType);
+            Long assistantMessageId = chatSessionService.createAssistantPlaceholder(session.getId(), botMsgId, sourceType);
 
             // 4. 创建运行主记录并初始化固定步骤。
             Long runId = agentRunService.createRun(userId, session.getId(), botMsgId, chatEntity.getMessage());
             agentRunService.initSteps(runId, chatEntity);
+
+            chatEntity.setSessionCode(session.getSessionCode());
 
             // 5. 组装异步执行上下文。
             AgentExecuteContext context = new AgentExecuteContext(
@@ -198,5 +208,21 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
         if (StrUtil.isNotBlank(lockKey)) {
             stringRedisTemplate.delete(lockKey);
         }
+    }
+
+    private String resolveSourceType(ChatEntity chatEntity) {
+        boolean ragEnabled = chatEntity != null && Boolean.TRUE.equals(chatEntity.getRagEnabled());
+        boolean internetEnabled = chatEntity != null && Boolean.TRUE.equals(chatEntity.getInternetEnabled());
+
+        if (ragEnabled && internetEnabled) {
+            throw new IllegalArgumentException("暂不支持同时开启知识库增强与联网补充");
+        }
+        if (ragEnabled) {
+            return "rag";
+        }
+        if (internetEnabled) {
+            return "internet";
+        }
+        return "chat";
     }
 }
