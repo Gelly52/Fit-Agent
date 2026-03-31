@@ -153,6 +153,7 @@ CREATE TABLE IF NOT EXISTS `t_rag_document` (
     `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '文档主键',
     `user_id` BIGINT DEFAULT NULL COMMENT '上传用户主键，系统文档可为空',
     `file_name` VARCHAR(255) NOT NULL COMMENT '展示文件名',
+    `source_count` INT NOT NULL DEFAULT 0 COMMENT '原始文档片段数',
     `file_hash` VARCHAR(64) DEFAULT NULL COMMENT '内容哈希，便于去重',
     `file_type` VARCHAR(50) DEFAULT NULL COMMENT 'txt/pdf/md/docx 等',
     `file_size` BIGINT NOT NULL DEFAULT 0 COMMENT '文件大小',

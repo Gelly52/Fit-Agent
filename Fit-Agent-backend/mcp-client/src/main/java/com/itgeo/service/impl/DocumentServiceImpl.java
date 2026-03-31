@@ -24,8 +24,8 @@ import java.util.stream.Collectors;
  * 文档向量化与检索服务实现。
  *
  * 说明：
- * 1. 上传时会把 fileName、userId 写入 metadata；
- * 2. 当前 Spring AI 版本下，先采用“扩大召回 + 内存按 userId 过滤”的保守方案；
+ * 1. 上传时会把 fileName、userId、source 写入 metadata；
+ * 2. 检索时通过 RedisVectorStore 的 filterExpression 基于 userId 做用户隔离；
  * 3. 当前仅服务手动 RAG 接口，不自动接入普通聊天与 Agent 执行链路。
  */
 @Service
@@ -48,9 +48,11 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         String safeFileName = (fileName == null || fileName.isBlank()) ? "unknown" : fileName;
+        String metadataUserId = String.valueOf(userId);
+
         TextReader reader = new TextReader(resource);
         reader.getCustomMetadata().put("fileName", safeFileName);
-        reader.getCustomMetadata().put("userId", userId);
+        reader.getCustomMetadata().put("userId", metadataUserId);
 
         List<Document> documentList = reader.get();
         TokenTextSplitter tokenTextSplitter = new TokenTextSplitter();
@@ -58,7 +60,8 @@ public class DocumentServiceImpl implements DocumentService {
 
         for (Document document : splitDocuments) {
             document.getMetadata().put("fileName", safeFileName);
-            document.getMetadata().put("userId", userId);
+            document.getMetadata().put("userId", metadataUserId);
+            document.getMetadata().putIfAbsent("source", safeFileName);
         }
 
         redisVectorStore.add(splitDocuments);
@@ -85,32 +88,22 @@ public class DocumentServiceImpl implements DocumentService {
         if (userId == null) {
             throw new IllegalArgumentException("userId不能为空");
         }
-
         int safeTopK = normalizeTopK(topK);
-        int scanTopK = Math.min(Math.max(safeTopK * 5, safeTopK), FILTER_SCAN_LIMIT);
         SearchRequest request = SearchRequest.builder()
                 .query(question)
-                .topK(scanTopK)
+                .topK(safeTopK)
+                .filterExpression("userId == '" + userId + "'")
                 .build();
 
-        List<Document> rawResults = redisVectorStore.similaritySearch(request);
-        if (rawResults == null || rawResults.isEmpty()) {
+        List<Document> results = redisVectorStore.similaritySearch(request);
+        if (results == null || results.isEmpty()) {
             log.info("RAG检索无结果, userId={}, requestedTopK={}", userId, safeTopK);
             return List.of();
         }
 
-        List<Document> filteredResults = rawResults.stream()
-                .filter(document -> belongsToUser(document, userId))
-                .limit(safeTopK)
-                .collect(Collectors.toList());
-
-        log.info("RAG检索完成, userId={}, requestedTopK={}, scanTopK={}, rawSize={}, filteredSize={}",
-                userId,
-                safeTopK,
-                scanTopK,
-                rawResults.size(),
-                filteredResults.size());
-        return filteredResults;
+        log.info("RAG检索完成, userId={}, requestedTopK={}, resultSize={}",
+                userId, safeTopK, results.size());
+        return results;
     }
 
     @Override
@@ -145,7 +138,7 @@ public class DocumentServiceImpl implements DocumentService {
         response.setMaxTopK(MAX_TOP_K);
         response.setFilterScanLimit(FILTER_SCAN_LIMIT);
         response.setUserIsolationEnabled(true);
-        response.setIsolationStrategy("scan_then_filter_by_metadata_userId");
+        response.setIsolationStrategy("vectorstore_filterExpression_userId");
         return response;
     }
 
@@ -157,16 +150,5 @@ public class DocumentServiceImpl implements DocumentService {
             return DEFAULT_TOP_K;
         }
         return Math.min(topK, MAX_TOP_K);
-    }
-
-    /**
-     * 判断文档 metadata 中的 userId 是否属于当前用户。
-     */
-    private boolean belongsToUser(Document document, Long userId) {
-        if (document == null || document.getMetadata() == null || userId == null) {
-            return false;
-        }
-        Object metadataUserId = document.getMetadata().get("userId");
-        return metadataUserId != null && userId.toString().equals(String.valueOf(metadataUserId));
     }
 }

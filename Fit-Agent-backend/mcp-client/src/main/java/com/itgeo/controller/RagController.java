@@ -4,11 +4,14 @@ import com.itgeo.auth.AuthenticatedUserContext;
 import com.itgeo.auth.UserContextHolder;
 import com.itgeo.bean.ChatEntity;
 import com.itgeo.bean.ChatResponseEntity;
+import com.itgeo.bean.RagBenchmarkEvaluateRequest;
 import com.itgeo.service.ChatService;
 import com.itgeo.service.DocumentService;
+import com.itgeo.service.RagBenchmarkService;
 import com.itgeo.utils.LeeResult;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,6 +30,7 @@ import java.util.List;
  * 1. 当前仅开放手动上传、手动检索、手动带上下文问答；
  * 2. Phase 1 不会自动把 RAG 接入 /chat/doChat 或 /agent/execute。
  */
+@Slf4j
 @RestController
 @RequestMapping("rag")
 public class RagController {
@@ -36,6 +40,9 @@ public class RagController {
 
     @Resource
     private ChatService chatService;
+
+    @Resource
+    private RagBenchmarkService ragBenchmarkService;
 
     /**
      * 上传用户自己的 RAG 文档。
@@ -107,5 +114,18 @@ public class RagController {
     @GetMapping("/config")
     public LeeResult getRagConfig() {
         return LeeResult.ok(documentService.getRagConfig());
+    }
+
+    @PostMapping("/benchmark/evaluate")
+    public LeeResult benchmarkEvaluate(@RequestBody RagBenchmarkEvaluateRequest request) {
+        try {
+            Long userId = UserContextHolder.getRequired().getUserId();
+            return LeeResult.ok(ragBenchmarkService.evaluate(userId, request));
+        } catch (IllegalArgumentException e) {
+            return LeeResult.errorMsg(e.getMessage());
+        } catch (Exception e) {
+            log.error("RAG benchmark 评测失败", e);
+            return LeeResult.errorException("RAG benchmark 评测失败");
+        }
     }
 }
