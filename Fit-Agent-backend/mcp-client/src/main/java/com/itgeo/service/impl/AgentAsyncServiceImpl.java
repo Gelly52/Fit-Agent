@@ -1,5 +1,6 @@
 package com.itgeo.service.impl;
 
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.itgeo.bean.*;
 import com.itgeo.enums.SSEMsgType;
@@ -12,10 +13,16 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -44,6 +51,33 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
             "完成回传"
     );
 
+    private static final long AGENT_LOCK_TTL_SECONDS = 120L;
+    private static final long AGENT_LOCK_RENEW_INTERVAL_SECONDS = 30L;
+    private static final DefaultRedisScript<Long> COMPARE_AND_EXPIRE_SCRIPT;
+    private static final DefaultRedisScript<Long> COMPARE_AND_DELETE_SCRIPT;
+
+    static {
+        COMPARE_AND_EXPIRE_SCRIPT = new DefaultRedisScript<>();
+        COMPARE_AND_EXPIRE_SCRIPT.setResultType(Long.class);
+        COMPARE_AND_EXPIRE_SCRIPT.setScriptText(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+                        "  return redis.call('expire', KEYS[1], ARGV[2]) " +
+                        "else " +
+                        "  return 0 " +
+                        "end"
+        );
+
+        COMPARE_AND_DELETE_SCRIPT = new DefaultRedisScript<>();
+        COMPARE_AND_DELETE_SCRIPT.setResultType(Long.class);
+        COMPARE_AND_DELETE_SCRIPT.setScriptText(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+                        "  return redis.call('del', KEYS[1]) " +
+                        "else " +
+                        "  return 0 " +
+                        "end"
+        );
+    }
+
     @Resource
     private AgentRunService agentRunService;
 
@@ -66,6 +100,41 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
     public void executeAsync(AgentExecuteContext context) {
         Integer currentStepNo = null;
         boolean finishEventAlreadySent = false;
+
+        ScheduledExecutorService renewExecutor = null;
+        ScheduledFuture<?> renewFuture = null;
+        if (StrUtil.isNotBlank(context.getLockKey()) && StrUtil.isNotBlank(context.getLockOwner())) {
+            renewExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread thread = new Thread(r, "agent-lock-renew-" + context.getRunId());
+                thread.setDaemon(true);
+                return thread;
+            });
+            renewFuture = renewExecutor.scheduleAtFixedRate(
+                    () -> {
+                        try {
+                            boolean renewed = renewLock(
+                                    context.getLockKey(),
+                                    context.getLockOwner(),
+                                    AGENT_LOCK_TTL_SECONDS
+                            );
+                            if (!renewed) {
+                                log.warn("Agent锁续期失败, runId={}, lockKey={}",
+                                        context.getRunId(),
+                                        context.getLockKey());
+                            }
+                        } catch (Exception ex) {
+                            log.warn("Agent锁续期异常, runId={}, lockKey={}",
+                                    context.getRunId(),
+                                    context.getLockKey(),
+                                    ex);
+                        }
+                    },
+                    AGENT_LOCK_RENEW_INTERVAL_SECONDS,
+                    AGENT_LOCK_RENEW_INTERVAL_SECONDS,
+                    TimeUnit.SECONDS
+            );
+        }
+
         try {
             // 1. 运行主记录进入 running 状态。
             agentRunService.markRunRunning(context.getRunId());
@@ -103,8 +172,6 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
             currentStepNo = 5;
             agentRunService.markStepRunning(context.getRunId(), 5, "{\"phase\":\"finish\"}");
             pushStepEvent(context, 5, resolveStepName(5), "running", "开始回填最终结果");
-
-
             agentRunService.markStepSuccess(context.getRunId(), 5, "{\"status\":\"ok\"}");
             pushStepEvent(context, 5, resolveStepName(5), "success", "任务回传完成");
 
@@ -148,7 +215,8 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
                 );
             }
         } finally {
-            releaseLock(context.getLockKey());
+            stopRenewTask(renewFuture, renewExecutor);
+            releaseLock(context.getLockKey(), context.getLockOwner());
         }
     }
 
@@ -164,6 +232,7 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
                 context.getChatEntity(),
                 context.getChatSessionId(),
                 context.getAssistantMessageId(),
+                context.getRunId(),
                 context.getAuthenticatedUser()
         );
     }
@@ -242,12 +311,39 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
         );
     }
 
+    private boolean renewLock(String lockKey, String lockOwner, long ttlSeconds) {
+        if (StrUtil.isBlank(lockKey) || StrUtil.isBlank(lockOwner)) {
+            return false;
+        }
+        Long result = stringRedisTemplate.execute(
+                COMPARE_AND_EXPIRE_SCRIPT,
+                Collections.singletonList(lockKey),
+                lockOwner,
+                String.valueOf(ttlSeconds)
+        );
+        return result != null && result > 0;
+    }
+
     /**
-     * 释放 Redis 并发锁。
+     * 只有owner匹配时才释放 Redis 并发锁。
      */
-    private void releaseLock(String lockKey) {
-        if (lockKey != null && !lockKey.isBlank()) {
-            stringRedisTemplate.delete(lockKey);
+    private void releaseLock(String lockKey, String lockOwner) {
+        if (StrUtil.isBlank(lockKey) || StrUtil.isBlank(lockOwner)) {
+            return;
+        }
+        stringRedisTemplate.execute(
+                COMPARE_AND_DELETE_SCRIPT,
+                Collections.singletonList(lockKey),
+                lockOwner
+        );
+    }
+
+    private void stopRenewTask(ScheduledFuture<?> renewFuture, ScheduledExecutorService renewExecutor) {
+        if (renewFuture != null) {
+            renewFuture.cancel(true);
+        }
+        if (renewExecutor != null) {
+            renewExecutor.shutdownNow();
         }
     }
 

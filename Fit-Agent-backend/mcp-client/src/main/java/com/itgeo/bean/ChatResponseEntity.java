@@ -21,6 +21,7 @@ import lombok.ToString;
 public class ChatResponseEntity {
     private String message;
     private String botMsgId;
+    private Long runId;
     private Long chatSessionId;
     private String sessionCode;
     private String sourceType;

@@ -1,7 +1,11 @@
 package com.itgeo.service;
 
+import com.itgeo.bean.AgentRunDetailResponse;
+import com.itgeo.bean.AgentRunListItemResponse;
 import com.itgeo.bean.ChatEntity;
 import com.itgeo.pojo.AgentRun;
+
+import java.util.List;
 
 public interface AgentRunService {
 
@@ -73,4 +77,23 @@ public interface AgentRunService {
      * @param errorMessage 错误消息
      */
     void markStepFailed(Long runId, Integer stepNo, String errorMessage);
+
+    /**
+     * 查询当前用户最近的 Agent 运行列表。
+     *
+     * @param userId 用户ID
+     * @param status 可选状态过滤
+     * @param limit 返回条数
+     * @return 运行列表
+     */
+    List<AgentRunListItemResponse> listRuns(Long userId, String status, Integer limit);
+
+    /**
+     * 查询当前用户指定运行的详情与步骤。
+     *
+     * @param userId 用户ID
+     * @param runId 运行ID
+     * @return 运行详情；不存在时返回 null
+     */
+    AgentRunDetailResponse getRunDetail(Long userId, Long runId);
 }

@@ -2,11 +2,16 @@ package com.itgeo.service.impl;
 
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.itgeo.bean.AgentRunDetailResponse;
+import com.itgeo.bean.AgentRunListItemResponse;
+import com.itgeo.bean.AgentRunStepResponse;
 import com.itgeo.bean.ChatEntity;
 import com.itgeo.mapper.AgentRunMapper;
 import com.itgeo.mapper.AgentStepMapper;
+import com.itgeo.mapper.ChatSessionMapper;
 import com.itgeo.pojo.AgentRun;
 import com.itgeo.pojo.AgentStep;
+import com.itgeo.pojo.ChatSession;
 import com.itgeo.service.AgentRunService;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
@@ -14,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Agent 运行记录与步骤记录持久化服务实现。
@@ -41,6 +47,9 @@ public class AgentRunServiceImpl implements AgentRunService {
     );
 
     @Resource
+    private ChatSessionMapper chatSessionMapper;
+
+    @Resource
     private AgentRunMapper agentRunMapper;
 
     @Resource
@@ -58,6 +67,7 @@ public class AgentRunServiceImpl implements AgentRunService {
                 new LambdaQueryWrapper<AgentRun>()
                         .eq(AgentRun::getUserId, userId)
                         .eq(AgentRun::getBotMsgId, botMsgId.trim())
+                        .orderByDesc(AgentRun::getId)
                         .last("limit 1"));
     }
 
@@ -196,6 +206,72 @@ public class AgentRunServiceImpl implements AgentRunService {
         agentStepMapper.updateById(update);
     }
 
+    @Override
+    public List<AgentRunListItemResponse> listRuns(Long userId, String status, Integer limit) {
+        if (userId == null) {
+            throw new IllegalArgumentException("userId不能为空");
+        }
+
+        int safeLimit = normalizeListLimit(limit);
+
+        LambdaQueryWrapper<AgentRun> wrapper = new LambdaQueryWrapper<AgentRun>()
+                .eq(AgentRun::getUserId, userId)
+                .orderByDesc(AgentRun::getId)
+                .last("limit " + safeLimit);
+
+        if (StrUtil.isNotBlank(status)) {
+            wrapper.eq(AgentRun::getStatus, status.trim());
+        }
+
+        List<AgentRun> runs = agentRunMapper.selectList(wrapper);
+        return runs.stream()
+                .map(this::toListItemResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public AgentRunDetailResponse getRunDetail(Long userId, Long runId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("userId不能为空");
+        }
+        if (runId == null) {
+            throw new IllegalArgumentException("runId不能为空");
+        }
+        AgentRun run = agentRunMapper.selectOne(
+                new LambdaQueryWrapper<AgentRun>()
+                        .eq(AgentRun::getId, runId)
+                        .eq(AgentRun::getUserId, userId)
+                        .last("limit 1")
+        );
+        if (run == null) return null;
+
+        List<AgentStep> steps = agentStepMapper.selectList(
+                new LambdaQueryWrapper<AgentStep>()
+                        .eq(AgentStep::getAgentRunId, runId)
+                        .orderByAsc(AgentStep::getStepNo)
+        );
+
+        AgentRunDetailResponse response = new AgentRunDetailResponse();
+        response.setRunId(run.getId());
+        response.setChatSessionId(run.getChatSessionId());
+        response.setSessionCode(resolveSessionCode(run.getChatSessionId()));
+        response.setBotMsgId(run.getBotMsgId());
+        response.setRequestText(run.getRequestText());
+        response.setStatus(run.getStatus());
+        response.setResultJson(run.getResultJson());
+        response.setErrorMessage(run.getErrorMessage());
+        response.setCreatedAt(run.getCreatedAt());
+        response.setStartedAt(run.getStartedAt());
+        response.setFinishedAt(run.getFinishedAt());
+        response.setSteps(
+                steps.stream()
+                        .map(this::toStepResponse)
+                        .collect(Collectors.toList())
+        );
+        return response;
+
+    }
+
     private void ensureRunExists(Long runId) {
         // 1. runId 不能为空
         if (runId == null) {
@@ -259,5 +335,49 @@ public class AgentRunServiceImpl implements AgentRunService {
     private String normalizeErrorMessage(String message, String defaultMessage) {
         String normalized = StrUtil.isBlank(message) ? defaultMessage : message.trim();
         return normalized.length() <= 500 ? normalized : normalized.substring(0, 500);
+    }
+
+    private AgentRunListItemResponse toListItemResponse(AgentRun run) {
+        AgentRunListItemResponse response = new AgentRunListItemResponse();
+        response.setRunId(run.getId());
+        response.setChatSessionId(run.getChatSessionId());
+        response.setSessionCode(resolveSessionCode(run.getChatSessionId()));
+        response.setBotMsgId(run.getBotMsgId());
+        response.setRequestText(run.getRequestText());
+        response.setStatus(run.getStatus());
+        response.setErrorMessage(run.getErrorMessage());
+        response.setCreatedAt(run.getCreatedAt());
+        response.setStartedAt(run.getStartedAt());
+        response.setFinishedAt(run.getFinishedAt());
+        return response;
+    }
+
+    private AgentRunStepResponse toStepResponse(AgentStep step) {
+        AgentRunStepResponse response = new AgentRunStepResponse();
+        response.setStepNo(step.getStepNo());
+        response.setStepName(step.getStepName());
+        response.setStepStatus(step.getStepStatus());
+        response.setToolName(step.getToolName());
+        response.setInputJson(step.getInputJson());
+        response.setOutputJson(step.getOutputJson());
+        response.setErrorMessage(step.getErrorMessage());
+        response.setStartedAt(step.getStartedAt());
+        response.setFinishedAt(step.getFinishedAt());
+        return response;
+    }
+
+    private String resolveSessionCode(Long chatSessionId) {
+        if (chatSessionId == null) {
+            return null;
+        }
+        ChatSession session = chatSessionMapper.selectById(chatSessionId);
+        return session == null ? null : session.getSessionCode();
+    }
+
+    private int normalizeListLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return 10;
+        }
+        return Math.min(limit, 50);
     }
 }

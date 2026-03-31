@@ -5,6 +5,7 @@ import cn.hutool.json.JSONUtil;
 import com.itgeo.auth.AuthenticatedUserContext;
 import com.itgeo.bean.ChatEntity;
 import com.itgeo.bean.ChatResponseEntity;
+import com.itgeo.bean.ChatStreamChunkResponse;
 import com.itgeo.bean.SearchResult;
 import com.itgeo.enums.SSEMsgType;
 import com.itgeo.pojo.ChatSession;
@@ -297,6 +298,7 @@ public class ChatServiceImpl implements ChatService {
             ChatEntity chatEntity,
             Long chatSessionId,
             Long assistantMessageId,
+            Long runId,
             AuthenticatedUserContext authenticatedUser
     ) {
         String sourceType = resolveSourceType(chatEntity);
@@ -315,6 +317,7 @@ public class ChatServiceImpl implements ChatService {
                 session.getId(),
                 session.getSessionCode(),
                 assistantMessageId,
+                runId,
                 "agent",
                 sourceType,
                 null
@@ -325,6 +328,7 @@ public class ChatServiceImpl implements ChatService {
             ChatEntity chatEntity,
             Long chatSessionId,
             Long assistantMessageId,
+            Long runId,
             AuthenticatedUserContext authenticatedUser
     ) {
         String sourceType = resolveSourceType(chatEntity);
@@ -344,6 +348,7 @@ public class ChatServiceImpl implements ChatService {
                 session.getId(),
                 session.getSessionCode(),
                 assistantMessageId,
+                runId,
                 "agent",
                 sourceType,
                 normalizedSources
@@ -370,7 +375,13 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public ChatResponseEntity doAgentWithEnhancers(ChatEntity chatEntity, Long chatSessionId, Long assistantMessageId, AuthenticatedUserContext authenticatedUser) {
+    public ChatResponseEntity doAgentWithEnhancers(
+            ChatEntity chatEntity,
+            Long chatSessionId,
+            Long assistantMessageId,
+            Long runId,
+            AuthenticatedUserContext authenticatedUser
+    ) {
         {
             boolean ragEnabled = isRagEnabled(chatEntity);
             boolean internetEnabled = isInternetEnabled(chatEntity);
@@ -383,6 +394,7 @@ public class ChatServiceImpl implements ChatService {
                         chatEntity,
                         chatSessionId,
                         assistantMessageId,
+                        runId,
                         authenticatedUser
                 );
             }
@@ -391,6 +403,7 @@ public class ChatServiceImpl implements ChatService {
                         chatEntity,
                         chatSessionId,
                         assistantMessageId,
+                        runId,
                         authenticatedUser
                 );
             }
@@ -398,9 +411,33 @@ public class ChatServiceImpl implements ChatService {
                     chatEntity,
                     chatSessionId,
                     assistantMessageId,
+                    runId,
                     authenticatedUser
             );
         }
+    }
+
+    private ChatResponseEntity streamAndSend(Flux<String> stringFlux,
+                                             AuthenticatedUserContext authenticatedUser,
+                                             String botMsgId,
+                                             Long chatSessionId,
+                                             String sessionCode,
+                                             Long assistantMessageId,
+                                             String sceneType,
+                                             String sourceType,
+                                             Object sources) {
+        return streamAndSend(
+                stringFlux,
+                authenticatedUser,
+                botMsgId,
+                chatSessionId,
+                sessionCode,
+                assistantMessageId,
+                null,
+                sceneType,
+                sourceType,
+                sources
+        );
     }
 
     /**
@@ -417,6 +454,7 @@ public class ChatServiceImpl implements ChatService {
                                              Long chatSessionId,
                                              String sessionCode,
                                              Long assistantMessageId,
+                                             Long runId,
                                              String sceneType,
                                              String sourceType,
                                              Object sources) {
@@ -426,7 +464,16 @@ public class ChatServiceImpl implements ChatService {
         List<String> chunks = stringFlux.toStream().map(chunk -> {
             String content = chunk == null ? "" : chunk;
             if (StrUtil.isNotBlank(sseClientId) && !content.isEmpty()) {
-                SSEServer.sendMsg(sseClientId, content, SSEMsgType.ADD);
+                ChatStreamChunkResponse addEvent = new ChatStreamChunkResponse();
+                addEvent.setContentChunk(content);
+                addEvent.setBotMsgId(botMsgId);
+                addEvent.setRunId(runId);
+                addEvent.setChatSessionId(chatSessionId);
+                addEvent.setSessionCode(sessionCode);
+                addEvent.setSceneType(sceneType);
+                addEvent.setSourceType(sourceType);
+
+                SSEServer.sendMsg(sseClientId, JSONUtil.toJsonStr(addEvent), SSEMsgType.ADD);
             }
             log.debug("chat chunk received, botMsgId={}, size={}", botMsgId, content.length());
             return content;
@@ -444,6 +491,7 @@ public class ChatServiceImpl implements ChatService {
         ChatResponseEntity chatResponseEntity = new ChatResponseEntity();
         chatResponseEntity.setMessage(fullContent);
         chatResponseEntity.setBotMsgId(botMsgId);
+        chatResponseEntity.setRunId(runId);
         chatResponseEntity.setChatSessionId(chatSessionId);
         chatResponseEntity.setSessionCode(sessionCode);
         chatResponseEntity.setSceneType(sceneType);
@@ -459,7 +507,8 @@ public class ChatServiceImpl implements ChatService {
             );
         }
 
-        log.info("chat stream finished, botMsgId={}, contentLength={}", botMsgId, fullContent.length());
+        log.info("chat stream finished, botMsgId={}, runId={}, contentLength={}",
+                botMsgId, runId, fullContent.length());
         return chatResponseEntity;
     }
 
@@ -552,6 +601,7 @@ public class ChatServiceImpl implements ChatService {
             ChatEntity chatEntity,
             Long chatSessionId,
             Long assistantMessageId,
+            Long runId,
             AuthenticatedUserContext authenticatedUser
     ) {
         String sourceType = resolveSourceType(chatEntity);
@@ -578,6 +628,7 @@ public class ChatServiceImpl implements ChatService {
                 session.getId(),
                 session.getSessionCode(),
                 assistantMessageId,
+                runId,
                 "agent",
                 sourceType,
                 normalizedSources

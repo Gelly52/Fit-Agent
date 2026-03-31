@@ -54,10 +54,15 @@ export function createSseTicket() {
   });
 }
 
-export function getRecords(who) {
+export function getRecords(who, sessionId, limit) {
   return instance({
-    url: "/chat/records?who=" + who,
+    url: "/chat/records",
     method: "get",
+    params: {
+      who,
+      sessionId,
+      limit,
+    },
   });
 }
 
@@ -77,6 +82,21 @@ export function agentExecute(bo) {
     url: "/agent/execute",
     method: "post",
     data: bo,
+  });
+}
+
+export function getAgentRuns(params) {
+  return instance({
+    url: "/agent/runs",
+    method: "get",
+    params: params || {},
+  });
+}
+
+export function getAgentRunDetail(runId) {
+  return instance({
+    url: "/agent/runs/" + encodeURIComponent(runId),
+    method: "get",
   });
 }
 
@@ -144,6 +164,8 @@ const doctorApi = {
   getRecords,
   uploadRagDoc,
   agentExecute,
+  getAgentRuns,
+  getAgentRunDetail,
   ragConfig,
   benchmarkEvaluate,
   logTraining,

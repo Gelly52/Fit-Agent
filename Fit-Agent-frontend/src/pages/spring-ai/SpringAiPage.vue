@@ -292,6 +292,7 @@ export default {
       draftMessage: "",
 
       knowledgeSearchSelected: false,
+      internetSearchSelected: false,
       agentModeSelected: true,
       imageReadSelected: false,
       isSending: false,
@@ -300,6 +301,8 @@ export default {
       selectedUploadName: "",
       sseState: "idle",
       guidanceMessage: "选择任务模式后，输入指令开始执行。",
+      activeAgentRun: null,
+      agentStepEventReceived: false,
       // Console-specific state
       mobileLeftOpen: false,
       mobileRightOpen: false,
@@ -394,6 +397,7 @@ export default {
     this._sseSource = null;
     this._sseConnectingPromise = null;
     this.loadUserSessionFromCookie();
+    this.restoreActiveAgentRun();
     var stableUserKey = this.resolveStableUserKey();
     if (stableUserKey) {
       this.ensureSseConnection();
@@ -458,8 +462,11 @@ export default {
       }
     },
     handleSelectChatSession(sessionId) {
-      if (this.isSending || this.isStreaming) {
-        this.showUiMessage("error", "正在执行任务，请稍后再切换聊天记录。");
+      if (this.isSending || this.isStreaming || this.hasPendingAgentRun()) {
+        this.showUiMessage(
+          "error",
+          "当前有运行中的任务，请稍后再切换聊天记录。"
+        );
         return;
       }
 
@@ -479,6 +486,7 @@ export default {
         targetSession.messages
       );
 
+      this.clearActiveAgentRun();
       this.activeView = "chat";
       this.activeChatSessionId = targetSession.sessionId;
       this.currentSessionCode = targetSession.sessionCode || null;
@@ -493,11 +501,12 @@ export default {
       this.scrollToBottom(true);
     },
     handleCreateChat() {
-      if (this.isSending || this.isStreaming) {
-        this.showUiMessage("error", "正在执行任务，请稍后再新建聊天。");
+      if (this.isSending || this.isStreaming || this.hasPendingAgentRun()) {
+        this.showUiMessage("error", "当前有运行中的任务，请稍后再新建聊天。");
         return;
       }
 
+      this.clearActiveAgentRun();
       this.activeView = "chat";
       this.activeChatSessionId = null;
       this.currentSessionCode = null;
@@ -883,6 +892,773 @@ export default {
       }
       return this.currentUserName || null;
     },
+    getActiveAgentRunStorageKey() {
+      var stableUserKey = this.resolveStableUserKey();
+      if (!stableUserKey || typeof window === "undefined") {
+        return null;
+      }
+      return "fit-agent:active-run:" + String(stableUserKey);
+    },
+    normalizeAgentRunStatus(status) {
+      var normalized =
+        status == null ? "pending" : String(status).toLowerCase();
+      if (normalized === "completed") {
+        return "success";
+      }
+      if (normalized === "error") {
+        return "failed";
+      }
+      if (
+        normalized === "pending" ||
+        normalized === "running" ||
+        normalized === "success" ||
+        normalized === "failed"
+      ) {
+        return normalized;
+      }
+      return "pending";
+    },
+    normalizeAgentStepStatus(status) {
+      var normalized =
+        status == null ? "pending" : String(status).toLowerCase();
+      if (normalized === "success" || normalized === "completed") {
+        return "completed";
+      }
+      if (normalized === "failed" || normalized === "error") {
+        return "failed";
+      }
+      if (normalized === "running") {
+        return "running";
+      }
+      return "pending";
+    },
+    isTerminalAgentRunStatus(status) {
+      var normalized = this.normalizeAgentRunStatus(status);
+      return normalized === "success" || normalized === "failed";
+    },
+    hasPendingAgentRun() {
+      return !!(
+        this.activeAgentRun &&
+        this.activeAgentRun.runId != null &&
+        !this.isTerminalAgentRunStatus(this.activeAgentRun.status)
+      );
+    },
+    normalizeAgentStepItem(step, index) {
+      if (!step) {
+        return null;
+      }
+      var rawStepNo = step.stepNo != null ? Number(step.stepNo) : index + 1;
+      var stepNo = isNaN(rawStepNo) ? index + 1 : rawStepNo;
+      var label = step.label || step.stepName || "步骤" + stepNo;
+      return {
+        id: step.id || "agent-step-" + stepNo,
+        stepNo: stepNo,
+        label: label,
+        stepName: step.stepName || label,
+        status: this.normalizeAgentStepStatus(
+          step.status != null ? step.status : step.stepStatus
+        ),
+        message: step.message || null,
+      };
+    },
+    buildActiveAgentRunSnapshot() {
+      if (!this.activeAgentRun || this.activeAgentRun.runId == null) {
+        return null;
+      }
+      var steps = [];
+      if (Array.isArray(this.agentSteps)) {
+        for (var i = 0; i < this.agentSteps.length; i++) {
+          var normalizedStep = this.normalizeAgentStepItem(
+            this.agentSteps[i],
+            i
+          );
+          if (normalizedStep) {
+            steps.push(normalizedStep);
+          }
+        }
+      }
+      return {
+        runId: this.activeAgentRun.runId,
+        chatSessionId: this.activeAgentRun.chatSessionId || null,
+        sessionCode: this.activeAgentRun.sessionCode || null,
+        botMsgId: this.activeAgentRun.botMsgId || this.botMsgId || null,
+        status: this.normalizeAgentRunStatus(this.activeAgentRun.status),
+        requestText: this.activeAgentRun.requestText || "",
+        sceneType: this.activeAgentRun.sceneType || "agent",
+        sourceType: this.activeAgentRun.sourceType || "chat",
+        finishReceived: !!this.activeAgentRun.finishReceived,
+        steps: steps,
+        lastUpdatedAt: new Date().toISOString(),
+      };
+    },
+    snapshotActiveAgentRun() {
+      var key = this.getActiveAgentRunStorageKey();
+      if (!key || typeof window === "undefined") {
+        return;
+      }
+      var snapshot = this.buildActiveAgentRunSnapshot();
+      if (!snapshot || this.isTerminalAgentRunStatus(snapshot.status)) {
+        window.sessionStorage.removeItem(key);
+        return;
+      }
+      window.sessionStorage.setItem(key, JSON.stringify(snapshot));
+    },
+    clearActiveAgentRun(options) {
+      var key = this.getActiveAgentRunStorageKey();
+      if (key && typeof window !== "undefined") {
+        window.sessionStorage.removeItem(key);
+      }
+      this.activeAgentRun = null;
+      this.agentStepEventReceived = false;
+      if (!options || options.clearSteps !== false) {
+        this.agentSteps = [];
+      }
+    },
+    restoreActiveAgentRun() {
+      var key = this.getActiveAgentRunStorageKey();
+      if (!key || typeof window === "undefined") {
+        return;
+      }
+      var rawValue = window.sessionStorage.getItem(key);
+      if (!rawValue) {
+        return;
+      }
+      var snapshot = this.safeParseJson(rawValue);
+      if (!snapshot || typeof snapshot !== "object" || snapshot.runId == null) {
+        window.sessionStorage.removeItem(key);
+        return;
+      }
+      if (this.isTerminalAgentRunStatus(snapshot.status)) {
+        window.sessionStorage.removeItem(key);
+        return;
+      }
+
+      var steps = [];
+      if (Array.isArray(snapshot.steps)) {
+        for (var i = 0; i < snapshot.steps.length; i++) {
+          var normalizedStep = this.normalizeAgentStepItem(
+            snapshot.steps[i],
+            i
+          );
+          if (normalizedStep) {
+            steps.push(normalizedStep);
+          }
+        }
+      }
+
+      this.activeAgentRun = {
+        runId: snapshot.runId,
+        chatSessionId:
+          snapshot.chatSessionId != null ? snapshot.chatSessionId : null,
+        sessionCode: snapshot.sessionCode ? String(snapshot.sessionCode) : null,
+        botMsgId: snapshot.botMsgId ? String(snapshot.botMsgId) : null,
+        status: this.normalizeAgentRunStatus(snapshot.status),
+        requestText: snapshot.requestText || "",
+        sceneType: snapshot.sceneType || "agent",
+        sourceType: snapshot.sourceType || "chat",
+        steps: steps,
+        finishReceived: !!snapshot.finishReceived,
+      };
+      this.agentStepEventReceived = steps.length > 0;
+      this.activeView = "chat";
+      this.agentModeSelected = true;
+      if (this.activeAgentRun.chatSessionId != null) {
+        this.activeChatSessionId = this.activeAgentRun.chatSessionId;
+      }
+      if (this.activeAgentRun.sessionCode) {
+        this.currentSessionCode = this.activeAgentRun.sessionCode;
+      }
+      this.currentSessionSceneType = this.activeAgentRun.sceneType || "agent";
+      if (this.activeAgentRun.botMsgId) {
+        this.botMsgId = this.activeAgentRun.botMsgId;
+      }
+      if (steps.length > 0) {
+        this.agentSteps = steps;
+      } else if (this.activeAgentRun.requestText) {
+        this.agentSteps = this.buildAgentSteps(this.activeAgentRun.requestText);
+      }
+      this.silentRestoreChatSession(this.activeAgentRun.chatSessionId);
+      this.silentFetchAgentRunDetail(this.activeAgentRun.runId);
+    },
+    safeParseJson(rawValue) {
+      if (rawValue == null) {
+        return null;
+      }
+      if (typeof rawValue === "object") {
+        return rawValue;
+      }
+      try {
+        return JSON.parse(String(rawValue));
+      } catch (error) {
+        return null;
+      }
+    },
+    isAgentRunQueryUnavailable(error) {
+      var status =
+        error && error.response && error.response.status != null
+          ? error.response.status
+          : null;
+      return status === 404 || status === 405 || status === 501;
+    },
+    silentRestoreChatSession(sessionId) {
+      if (sessionId == null) {
+        return Promise.resolve(null);
+      }
+      var stableUserKey = this.resolveStableUserKey();
+      if (!stableUserKey) {
+        return Promise.resolve(null);
+      }
+      var me = this;
+      return doctorApi
+        .getRecords(stableUserKey, sessionId, 1)
+        .then(function (res) {
+          var data = me.unwrapApiData(res, "加载聊天记录失败");
+          var sessions = me.normalizeChatSessions(data);
+          if (!Array.isArray(sessions) || sessions.length === 0) {
+            return null;
+          }
+          var targetSession = sessions[0];
+          var mappedChatList = me.mapSessionMessagesToChatList(
+            targetSession.messages
+          );
+          me.activeView = "chat";
+          me.activeChatSessionId = targetSession.sessionId;
+          me.currentSessionCode =
+            targetSession.sessionCode || me.currentSessionCode;
+          me.currentSessionSceneType =
+            targetSession.sceneType || me.currentSessionSceneType;
+          me.chatList = mappedChatList;
+          me.knowledgeSources = me.resolveChatHistorySources(mappedChatList);
+          me.scrollToBottom(true);
+          return targetSession;
+        })
+        .catch(function (error) {
+          console.warn("静默恢复聊天会话失败:", error);
+          return null;
+        });
+    },
+    applyAgentRunDetail(detail) {
+      if (!detail || typeof detail !== "object") {
+        return;
+      }
+      var runId = detail.runId != null ? detail.runId : null;
+      var normalizedStatus = this.normalizeAgentRunStatus(detail.status);
+      if (!this.activeAgentRun) {
+        this.activeAgentRun = {
+          runId: runId,
+          chatSessionId: null,
+          sessionCode: null,
+          botMsgId: null,
+          status: normalizedStatus,
+          requestText: "",
+          sceneType: "agent",
+          sourceType: "chat",
+          steps: [],
+          finishReceived: false,
+        };
+      }
+      if (runId != null) {
+        this.activeAgentRun.runId = runId;
+      }
+      if (detail.chatSessionId != null) {
+        this.activeAgentRun.chatSessionId = detail.chatSessionId;
+      }
+      if (detail.sessionCode) {
+        this.activeAgentRun.sessionCode = String(detail.sessionCode);
+      }
+      if (detail.botMsgId) {
+        this.activeAgentRun.botMsgId = String(detail.botMsgId);
+      }
+      if (detail.requestText) {
+        this.activeAgentRun.requestText = detail.requestText;
+      }
+      this.activeAgentRun.status = normalizedStatus;
+      this.activeAgentRun.sceneType = "agent";
+      if (detail.sourceType) {
+        this.activeAgentRun.sourceType = String(
+          detail.sourceType
+        ).toLowerCase();
+      }
+
+      var steps = [];
+      if (Array.isArray(detail.steps)) {
+        for (var i = 0; i < detail.steps.length; i++) {
+          var normalizedStep = this.normalizeAgentStepItem(detail.steps[i], i);
+          if (normalizedStep) {
+            steps.push(normalizedStep);
+          }
+        }
+      }
+      if (steps.length > 0) {
+        this.agentSteps = steps;
+        this.agentStepEventReceived = true;
+        this.activeAgentRun.steps = steps;
+      }
+
+      this.applyServerSessionMeta(detail, "agent");
+      if (this.activeAgentRun.chatSessionId != null) {
+        this.activeChatSessionId = this.activeAgentRun.chatSessionId;
+      }
+      if (this.activeAgentRun.sessionCode) {
+        this.currentSessionCode = this.activeAgentRun.sessionCode;
+      }
+      if (this.activeAgentRun.botMsgId) {
+        this.botMsgId = this.activeAgentRun.botMsgId;
+      }
+      this.currentSessionSceneType = "agent";
+      this.snapshotActiveAgentRun();
+      if (this.isTerminalAgentRunStatus(normalizedStatus)) {
+        this.guidanceMessage =
+          normalizedStatus === "success"
+            ? "本轮任务已完成，可继续发起新任务。"
+            : "任务执行失败，请调整后重试。";
+      }
+    },
+    silentFetchAgentRunDetail(runId) {
+      if (runId == null) {
+        return Promise.resolve(null);
+      }
+      var me = this;
+      return doctorApi
+        .getAgentRunDetail(runId)
+        .then(function (res) {
+          var data = me.unwrapApiData(res, "加载运行详情失败");
+          me.applyAgentRunDetail(data);
+          return data;
+        })
+        .catch(function (error) {
+          if (me.isAgentRunQueryUnavailable(error)) {
+            return null;
+          }
+          console.warn("静默加载Agent运行详情失败:", error);
+          return null;
+        });
+    },
+    applyAgentExecuteAck(
+      payload,
+      requestPayload,
+      expectedSceneType,
+      sourceType
+    ) {
+      if (!payload || payload.runId == null) {
+        return false;
+      }
+      var steps = [];
+      if (Array.isArray(this.agentSteps)) {
+        for (var i = 0; i < this.agentSteps.length; i++) {
+          var normalizedStep = this.normalizeAgentStepItem(
+            this.agentSteps[i],
+            i
+          );
+          if (normalizedStep) {
+            steps.push(normalizedStep);
+          }
+        }
+      }
+      this.activeAgentRun = {
+        runId: payload.runId,
+        chatSessionId:
+          payload.chatSessionId != null ? payload.chatSessionId : null,
+        sessionCode: payload.sessionCode ? String(payload.sessionCode) : null,
+        botMsgId: payload.botMsgId
+          ? String(payload.botMsgId)
+          : requestPayload && requestPayload.botMsgId
+          ? String(requestPayload.botMsgId)
+          : null,
+        status: this.normalizeAgentRunStatus(payload.status),
+        requestText:
+          requestPayload && requestPayload.message
+            ? requestPayload.message
+            : "",
+        sceneType: expectedSceneType || "agent",
+        sourceType: sourceType || "chat",
+        steps: steps,
+        finishReceived: false,
+      };
+      this.agentStepEventReceived = false;
+      this.applyServerSessionMeta(payload, expectedSceneType || "agent");
+      this.currentSessionSceneType = expectedSceneType || "agent";
+      if (this.activeAgentRun.botMsgId) {
+        this.botMsgId = this.activeAgentRun.botMsgId;
+      }
+      this.snapshotActiveAgentRun();
+      this.silentFetchAgentRunDetail(payload.runId);
+      return true;
+    },
+    normalizeAddPayload(rawValue) {
+      var parsed = this.safeParseJson(rawValue);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        var chunkText = parsed.contentChunk;
+        if (chunkText == null) {
+          chunkText = parsed.delta;
+        }
+        if (chunkText == null) {
+          chunkText = parsed.content;
+        }
+        if (chunkText == null) {
+          chunkText = parsed.message;
+        }
+        if (chunkText == null) {
+          chunkText = parsed.text;
+        }
+        return {
+          chunkText: chunkText == null ? "" : String(chunkText),
+          botMsgId: parsed.botMsgId ? String(parsed.botMsgId) : null,
+          runId: parsed.runId != null ? parsed.runId : null,
+          chatSessionId:
+            parsed.chatSessionId != null ? parsed.chatSessionId : null,
+          sessionCode: parsed.sessionCode ? String(parsed.sessionCode) : null,
+          sceneType: parsed.sceneType
+            ? String(parsed.sceneType).toLowerCase()
+            : null,
+          sourceType: parsed.sourceType
+            ? String(parsed.sourceType).toLowerCase()
+            : null,
+        };
+      }
+      return {
+        chunkText: rawValue == null ? "" : String(rawValue),
+        botMsgId: null,
+        runId: null,
+        chatSessionId: null,
+        sessionCode: null,
+        sceneType: null,
+        sourceType: null,
+      };
+    },
+    upsertStreamingBotMessage(payload) {
+      if (!payload) {
+        return;
+      }
+      if (
+        payload.runId != null &&
+        this.activeAgentRun &&
+        this.activeAgentRun.runId != null &&
+        String(payload.runId) !== String(this.activeAgentRun.runId)
+      ) {
+        return;
+      }
+      var receiveMsg =
+        payload.chunkText == null ? "" : String(payload.chunkText);
+      if (!receiveMsg) {
+        return;
+      }
+      var botMsgId =
+        payload.botMsgId ||
+        (this.activeAgentRun && this.activeAgentRun.botMsgId) ||
+        this.botMsgId;
+      if (!botMsgId) {
+        return;
+      }
+      if (this.taskStartTime && !this.lastTtft) {
+        this.lastTtft = Date.now() - this.taskStartTime;
+      }
+      this.isSending = false;
+      this.isStreaming = true;
+      this.guidanceMessage = "正在生成回答，请稍候。";
+
+      if (
+        this.agentModeSelected &&
+        this.agentSteps.length > 0 &&
+        !this.agentStepEventReceived
+      ) {
+        this.updateAgentStepsOnStream();
+      }
+
+      var sessionMeta = {
+        chatSessionId:
+          payload.chatSessionId != null
+            ? payload.chatSessionId
+            : this.activeAgentRun && this.activeAgentRun.chatSessionId != null
+            ? this.activeAgentRun.chatSessionId
+            : null,
+        sessionCode:
+          payload.sessionCode ||
+          (this.activeAgentRun && this.activeAgentRun.sessionCode) ||
+          this.currentSessionCode ||
+          null,
+        sceneType:
+          payload.sceneType ||
+          this.currentSessionSceneType ||
+          this.resolveExpectedSessionSceneType(),
+      };
+      this.applyServerSessionMeta(sessionMeta, sessionMeta.sceneType);
+
+      if (this.activeAgentRun) {
+        this.activeAgentRun.botMsgId = botMsgId;
+        if (payload.chatSessionId != null) {
+          this.activeAgentRun.chatSessionId = payload.chatSessionId;
+        }
+        if (payload.sessionCode) {
+          this.activeAgentRun.sessionCode = payload.sessionCode;
+        }
+        if (payload.runId != null) {
+          this.activeAgentRun.runId = payload.runId;
+        }
+        if (!this.isTerminalAgentRunStatus(this.activeAgentRun.status)) {
+          this.activeAgentRun.status = "running";
+        }
+        this.snapshotActiveAgentRun();
+      }
+
+      var targetChatItem = null;
+      for (var i = 0; i < this.chatList.length; i++) {
+        var chatItem = this.chatList[i];
+        if (chatItem.botMsgId == botMsgId) {
+          targetChatItem = chatItem;
+          break;
+        }
+      }
+
+      if (!targetChatItem) {
+        this.chatList.push({
+          id: "temp-" + this.generateRandomId(8),
+          content: receiveMsg,
+          userName: "bot",
+          chatType: "bot",
+          botMsgId: botMsgId,
+          createdAt: new Date().toISOString(),
+          sources: [],
+          sourceType: payload.sourceType || null,
+          sessionCode: sessionMeta.sessionCode,
+          sceneType: sessionMeta.sceneType,
+        });
+      } else {
+        targetChatItem.content = (targetChatItem.content || "") + receiveMsg;
+        targetChatItem.sessionCode =
+          targetChatItem.sessionCode || sessionMeta.sessionCode || null;
+        targetChatItem.sceneType =
+          targetChatItem.sceneType || sessionMeta.sceneType || null;
+        targetChatItem.sourceType =
+          targetChatItem.sourceType || payload.sourceType || null;
+      }
+      this.scrollToBottom();
+    },
+    handleAgentCustomEvent(rawValue) {
+      var payload = this.safeParseJson(rawValue);
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        return;
+      }
+      if (
+        payload.runId != null &&
+        this.activeAgentRun &&
+        this.activeAgentRun.runId != null &&
+        String(payload.runId) !== String(this.activeAgentRun.runId)
+      ) {
+        return;
+      }
+      var rawStepNo = payload.stepNo != null ? Number(payload.stepNo) : null;
+      var normalizedStep = this.normalizeAgentStepItem(
+        {
+          stepNo: isNaN(rawStepNo) ? this.agentSteps.length + 1 : rawStepNo,
+          stepName: payload.stepName || payload.label || payload.name,
+          label: payload.label || payload.stepName || payload.name,
+          stepStatus:
+            payload.stepStatus != null ? payload.stepStatus : payload.status,
+          message: payload.message || null,
+        },
+        isNaN(rawStepNo) ? this.agentSteps.length : rawStepNo - 1
+      );
+      if (!normalizedStep) {
+        return;
+      }
+      if (!this.activeAgentRun && payload.runId != null) {
+        this.activeAgentRun = {
+          runId: payload.runId,
+          chatSessionId: null,
+          sessionCode: this.currentSessionCode || null,
+          botMsgId: this.botMsgId || null,
+          status: "running",
+          requestText: this.draftMessage || "",
+          sceneType: "agent",
+          sourceType: "chat",
+          steps: [],
+          finishReceived: false,
+        };
+      }
+      this.applyAgentStepEvent(normalizedStep, payload);
+    },
+    applyAgentStepEvent(stepEvent, eventPayload) {
+      if (!stepEvent) {
+        return;
+      }
+      this.agentStepEventReceived = true;
+      var matchedIndex = -1;
+      for (var i = 0; i < this.agentSteps.length; i++) {
+        var currentStep = this.agentSteps[i];
+        if (
+          currentStep &&
+          currentStep.stepNo != null &&
+          stepEvent.stepNo != null &&
+          Number(currentStep.stepNo) === Number(stepEvent.stepNo)
+        ) {
+          matchedIndex = i;
+          break;
+        }
+      }
+      if (matchedIndex >= 0) {
+        this.agentSteps[matchedIndex] = Object.assign(
+          {},
+          this.agentSteps[matchedIndex],
+          stepEvent
+        );
+      } else {
+        this.agentSteps.push(stepEvent);
+      }
+      this.agentSteps = this.agentSteps
+        .slice()
+        .sort(function (a, b) {
+          var aStepNo = a && a.stepNo != null ? Number(a.stepNo) : 999;
+          var bStepNo = b && b.stepNo != null ? Number(b.stepNo) : 999;
+          return aStepNo - bStepNo;
+        })
+        .map(
+          function (item, index) {
+            return this.normalizeAgentStepItem(item, index);
+          }.bind(this)
+        )
+        .filter(function (item) {
+          return !!item;
+        });
+
+      if (!this.activeAgentRun) {
+        this.activeAgentRun = {
+          runId:
+            eventPayload && eventPayload.runId != null
+              ? eventPayload.runId
+              : null,
+          chatSessionId: null,
+          sessionCode: this.currentSessionCode || null,
+          botMsgId: this.botMsgId || null,
+          status: "running",
+          requestText: "",
+          sceneType: "agent",
+          sourceType: "chat",
+          steps: [],
+          finishReceived: false,
+        };
+      }
+      if (eventPayload) {
+        if (eventPayload.runId != null) {
+          this.activeAgentRun.runId = eventPayload.runId;
+        }
+        if (eventPayload.chatSessionId != null) {
+          this.activeAgentRun.chatSessionId = eventPayload.chatSessionId;
+        }
+        if (eventPayload.sessionCode) {
+          this.activeAgentRun.sessionCode = String(eventPayload.sessionCode);
+        }
+        if (eventPayload.botMsgId) {
+          this.activeAgentRun.botMsgId = String(eventPayload.botMsgId);
+        }
+      }
+      this.activeAgentRun.steps = this.agentSteps.slice();
+      if (stepEvent.status === "failed") {
+        this.activeAgentRun.status = "failed";
+        this.guidanceMessage =
+          stepEvent.message || "任务执行失败，请调整后重试。";
+        this.isSending = false;
+        this.isStreaming = false;
+      } else if (stepEvent.stepNo != null && Number(stepEvent.stepNo) >= 5) {
+        this.activeAgentRun.status = "success";
+        this.guidanceMessage = "本轮任务已完成，可继续发起新任务。";
+        this.isSending = false;
+        this.isStreaming = false;
+        this.botMsgId = null;
+      } else if (!this.isTerminalAgentRunStatus(this.activeAgentRun.status)) {
+        this.activeAgentRun.status = "running";
+      }
+      this.snapshotActiveAgentRun();
+    },
+    applyFinishPayload(chatResponse) {
+      var payload =
+        chatResponse && typeof chatResponse === "object"
+          ? chatResponse
+          : { message: chatResponse == null ? "" : String(chatResponse) };
+      var message = payload.message == null ? "" : String(payload.message);
+      var botMsgId =
+        payload.botMsgId ||
+        (this.activeAgentRun && this.activeAgentRun.botMsgId) ||
+        this.botMsgId;
+      var normalizedSources = this.extractSourcesFromResponse(payload);
+      var matched = false;
+      this.applyServerSessionMeta(
+        payload,
+        this.currentSessionSceneType || this.resolveExpectedSessionSceneType()
+      );
+
+      for (var i = 0; i < this.chatList.length; i++) {
+        var chatItem = this.chatList[i];
+        if (chatItem.botMsgId == botMsgId) {
+          chatItem.content = marked.parse(message || "");
+          chatItem.sources = normalizedSources;
+          chatItem.sourceType =
+            payload.sourceType || chatItem.sourceType || null;
+          chatItem.sessionCode =
+            payload.sessionCode || chatItem.sessionCode || null;
+          chatItem.sceneType = payload.sceneType || chatItem.sceneType || null;
+          matched = true;
+        }
+      }
+
+      if (!matched && botMsgId) {
+        this.chatList.push({
+          id: "temp-" + this.generateRandomId(8),
+          content: marked.parse(message || ""),
+          userName: "bot",
+          chatType: "bot",
+          botMsgId: botMsgId,
+          createdAt: new Date().toISOString(),
+          sources: normalizedSources,
+          sourceType: payload.sourceType || null,
+          sessionCode: payload.sessionCode || this.currentSessionCode || null,
+          sceneType: payload.sceneType || this.currentSessionSceneType || null,
+        });
+      }
+
+      this.knowledgeSources =
+        normalizedSources && normalizedSources.length > 0
+          ? normalizedSources
+          : [];
+
+      if (this.activeAgentRun) {
+        if (payload.chatSessionId != null) {
+          this.activeAgentRun.chatSessionId = payload.chatSessionId;
+        }
+        if (payload.sessionCode) {
+          this.activeAgentRun.sessionCode = String(payload.sessionCode);
+        }
+        if (botMsgId) {
+          this.activeAgentRun.botMsgId = String(botMsgId);
+        }
+        this.activeAgentRun.finishReceived = true;
+        if (this.normalizeAgentRunStatus(payload.status) === "failed") {
+          this.activeAgentRun.status = "failed";
+          if (this.agentSteps.length > 0) {
+            this.failCurrentAgentStep();
+          }
+          this.guidanceMessage = "任务执行失败，请稍后重试。";
+        } else if (!this.isTerminalAgentRunStatus(this.activeAgentRun.status)) {
+          this.activeAgentRun.status = "running";
+          this.guidanceMessage = "任务结果已返回，正在同步执行状态。";
+        }
+        this.snapshotActiveAgentRun();
+        this.silentFetchAgentRunDetail(
+          payload.runId != null ? payload.runId : this.activeAgentRun.runId
+        );
+      } else if (this.agentModeSelected && this.agentSteps.length > 0) {
+        this.completeAllAgentSteps();
+        this.guidanceMessage = "本轮任务已完成，可继续发起新任务。";
+      } else {
+        this.guidanceMessage = "本轮任务已完成，可继续发起新任务。";
+      }
+
+      this.refreshChatRecordsIfNeeded();
+      this.botMsgId = null;
+      this.isSending = false;
+      this.isStreaming = false;
+      this.scrollToBottom();
+    },
     handleLogout() {
       if (this.isLoggingOut) {
         return;
@@ -910,6 +1686,7 @@ export default {
         .finally(
           function () {
             this.teardownSSE({ clearPending: true });
+            this.clearActiveAgentRun();
             clearUserSession();
             this.currentUserInfo = null;
             this.currentUserName = null;
@@ -965,6 +1742,7 @@ export default {
         console.log(eventName + "事件...");
         console.log(event && event.lastEventId);
         console.log(event && event.data);
+        me.handleAgentCustomEvent(event && event.data);
       };
 
       this.currentUserName = resolvedUserKey;
@@ -1012,48 +1790,10 @@ export default {
               settle(connection);
             },
             onAdd: function (event) {
-              var receiveMsg =
-                event && event.data != null ? String(event.data) : "";
-              var botMsgId = me.botMsgId;
-              var targetChatItem = null;
-
-              if (me.taskStartTime && !me.lastTtft) {
-                me.lastTtft = Date.now() - me.taskStartTime;
-              }
-
-              console.log(receiveMsg);
-              me.isSending = false;
-              me.isStreaming = true;
-
-              if (me.agentModeSelected && me.agentSteps.length > 0) {
-                me.updateAgentStepsOnStream();
-              }
-
-              for (var i = 0; i < me.chatList.length; i++) {
-                var chatItem = me.chatList[i];
-                if (chatItem.botMsgId == botMsgId) {
-                  targetChatItem = chatItem;
-                  break;
-                }
-              }
-
-              if (!targetChatItem) {
-                me.chatList.push({
-                  id: "temp-" + me.generateRandomId(8),
-                  content: receiveMsg,
-                  userName: "bot",
-                  chatType: "bot",
-                  botMsgId: botMsgId,
-                  createdAt: new Date().toISOString(),
-                  sources: [],
-                });
-              } else {
-                targetChatItem.content =
-                  (targetChatItem.content || "") + receiveMsg;
-              }
-
-              me.guidanceMessage = "正在生成回答，请稍候。";
-              me.scrollToBottom();
+              var payload = me.normalizeAddPayload(
+                event && event.data != null ? event.data : ""
+              );
+              me.upsertStreamingBotMessage(payload);
             },
             onFinish: function (event) {
               console.log("finish事件...");
@@ -1070,73 +1810,19 @@ export default {
               }
 
               try {
-                var chatResponse = JSON.parse((event && event.data) || "{}");
-                var message = chatResponse.message;
-                var botMsgId = chatResponse.botMsgId;
-                var normalizedSources =
-                  me.extractSourcesFromResponse(chatResponse);
-                var matched = false;
-
-                me.applyServerSessionMeta(
-                  chatResponse,
-                  me.currentSessionSceneType ||
-                    me.resolveExpectedSessionSceneType()
-                );
-
-                for (var i = 0; i < me.chatList.length; i++) {
-                  var chatItem = me.chatList[i];
-                  if (chatItem.botMsgId == botMsgId) {
-                    chatItem.content = marked.parse(message || "");
-                    chatItem.sources = normalizedSources;
-                    chatItem.sourceType =
-                      chatResponse.sourceType || chatItem.sourceType || null;
-                    chatItem.sessionCode =
-                      chatResponse.sessionCode || chatItem.sessionCode || null;
-                    chatItem.sceneType =
-                      chatResponse.sceneType || chatItem.sceneType || null;
-                    matched = true;
-                  }
-                }
-
-                if (!matched && botMsgId) {
-                  me.chatList.push({
-                    id: "temp-" + me.generateRandomId(8),
-                    content: marked.parse(message || ""),
-                    userName: "bot",
-                    chatType: "bot",
-                    botMsgId: botMsgId,
-                    createdAt: new Date().toISOString(),
-                    sources: normalizedSources,
-                    sourceType: chatResponse.sourceType || null,
-                    sessionCode:
-                      chatResponse.sessionCode || me.currentSessionCode || null,
-                    sceneType:
-                      chatResponse.sceneType ||
-                      me.currentSessionSceneType ||
-                      null,
-                  });
-                }
-
-                if (normalizedSources && normalizedSources.length > 0) {
-                  me.knowledgeSources = normalizedSources;
-                } else {
-                  me.knowledgeSources = [];
-                }
-
-                if (me.agentSteps.length > 0) {
-                  me.completeAllAgentSteps();
-                }
-
-                me.guidanceMessage = "本轮任务已完成，可继续发起新任务。";
-                me.refreshChatRecordsIfNeeded();
+                var payload =
+                  me.safeParseJson((event && event.data) || "") ||
+                  (event && event.data) ||
+                  "";
+                me.applyFinishPayload(payload);
               } catch (error) {
                 console.error("解析finish事件失败:", error);
                 me.guidanceMessage = "任务已结束，但结果解析失败，请稍后重试。";
+                me.botMsgId = null;
+                me.isSending = false;
+                me.isStreaming = false;
               }
 
-              me.botMsgId = null;
-              me.isSending = false;
-              me.isStreaming = false;
               me.scrollToBottom();
             },
             onError: function (event, context) {
@@ -1166,6 +1852,13 @@ export default {
 
               if (me.agentSteps.length > 0) {
                 me.failCurrentAgentStep();
+              }
+              if (
+                me.activeAgentRun &&
+                !me.isTerminalAgentRunStatus(me.activeAgentRun.status)
+              ) {
+                me.activeAgentRun.status = "failed";
+                me.snapshotActiveAgentRun();
               }
 
               me.botMsgId = null;
@@ -1757,7 +2450,19 @@ export default {
       if (requestPromise && typeof requestPromise.then === "function") {
         requestPromise = requestPromise.then(function (res) {
           var data = me.unwrapApiData(res, "任务请求失败，请稍后重试！");
+          var ackApplied = false;
           me.applyServerSessionMeta(data, expectedSceneType);
+          if (agentModeSelected) {
+            ackApplied = me.applyAgentExecuteAck(
+              data,
+              singleChat,
+              expectedSceneType,
+              currentSourceType
+            );
+            if (!ackApplied) {
+              me.clearActiveAgentRun();
+            }
+          }
           return res;
         });
       }

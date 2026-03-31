@@ -82,6 +82,7 @@ public interface ChatService {
             ChatEntity chatEntity,
             Long chatSessionId,
             Long assistantMessageId,
+            Long runId,
             AuthenticatedUserContext authenticatedUser
     );
 
@@ -89,6 +90,7 @@ public interface ChatService {
             ChatEntity chatEntity,
             Long chatSessionId,
             Long assistantMessageId,
+            Long runId,
             AuthenticatedUserContext authenticatedUser
     );
 
@@ -101,6 +103,7 @@ public interface ChatService {
             ChatEntity chatEntity,
             Long chatSessionId,
             Long assistantMessageId,
+            Long runId,
             AuthenticatedUserContext authenticatedUser
     );
 

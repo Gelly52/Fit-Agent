@@ -73,7 +73,10 @@ public class ChatController {
             return true;
         }
 
-        return chatSessionService.existsByBotMsgId(botMsgId);
+        return chatSessionService.existsByUserIdAndBotMsgId(
+                authenticatedUser.getUserId(),
+                botMsgId
+        );
     }
 
     /**

@@ -109,4 +109,12 @@ public interface ChatSessionService {
      * 按会话主键和用户主键查询会话。
      */
     ChatSession findByIdAndUserId(Long sessionId, Long userId);
+
+    /**
+     * 检查当前用户是否存在指定 botMsgId 的消息记录。
+     * @param userId 用户ID
+     * @param botMsgId 机器人消息ID
+     * @return 是否存在
+     */
+    boolean existsByUserIdAndBotMsgId(Long userId, String botMsgId);
 }

@@ -340,6 +340,40 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         );
     }
 
+    @Override
+    public boolean existsByUserIdAndBotMsgId(Long userId, String botMsgId) {
+        if (userId == null || StrUtil.isBlank(botMsgId)) {
+            return false;
+        }
+
+        List<ChatMessage> candidates = chatMessageMapper.selectList(
+                new LambdaQueryWrapper<ChatMessage>()
+                        .select(ChatMessage::getSessionId)
+                        .eq(ChatMessage::getBotMsgId, botMsgId.trim())
+        );
+        if (candidates == null || candidates.isEmpty()) {
+            return false;
+        }
+
+        List<Long> sessionIds = candidates.stream()
+                .map(ChatMessage::getSessionId)
+                .filter(id -> id != null)
+                .distinct()
+                .collect(Collectors.toList());
+        if (sessionIds.isEmpty()) {
+            return false;
+        }
+
+        ChatSession existingSession = chatSessionMapper.selectOne(
+                new LambdaQueryWrapper<ChatSession>()
+                        .select(ChatSession::getId)
+                        .eq(ChatSession::getUserId, userId)
+                        .in(ChatSession::getId, sessionIds)
+                        .last("limit 1")
+        );
+        return existingSession != null;
+    }
+
     private void validateSessionId(Long sessionId) {
         // 1. sessionId 不能为空
         if (sessionId == null) {

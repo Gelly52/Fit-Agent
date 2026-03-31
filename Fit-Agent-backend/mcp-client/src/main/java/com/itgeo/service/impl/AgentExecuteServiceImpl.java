@@ -15,11 +15,13 @@ import com.itgeo.utils.SSEServer;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -43,6 +45,19 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
 
     private static final long AGENT_LOCK_TTL_SECONDS = 120L;
     private static final String AGENT_LOCK_KEY_PREFIX = "fit-agent:agent:run:session:";
+    private static final DefaultRedisScript<Long> COMPARE_AND_DELETE_SCRIPT;
+
+    static {
+        COMPARE_AND_DELETE_SCRIPT = new DefaultRedisScript<>();
+        COMPARE_AND_DELETE_SCRIPT.setResultType(Long.class);
+        COMPARE_AND_DELETE_SCRIPT.setScriptText(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+                        "  return redis.call('del', KEYS[1]) " +
+                        "else " +
+                        "  return 0 " +
+                        "end"
+        );
+    }
 
     @Resource
     private ChatSessionService chatSessionService;
@@ -97,22 +112,12 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
             );
         }
 
+        String sourceType = resolveSourceType(chatEntity);
         String lockKey = buildLockKey(authenticatedUser.getSessionId());
+        String lockOwner = null;
         boolean lockAcquired = false;
         try {
-            // 2. 同一登录 session 同时只允许一个 running agent。
-            Boolean locked = stringRedisTemplate.opsForValue().setIfAbsent(
-                    lockKey,
-                    botMsgId,
-                    AGENT_LOCK_TTL_SECONDS,
-                    TimeUnit.SECONDS
-            );
-            if (!Boolean.TRUE.equals(locked)) {
-                throw new IllegalArgumentException("当前已有任务执行中，请稍后再试");
-            }
-            lockAcquired = true;
-
-            // 3. 创建会话、写入用户消息、创建 assistant 占位消息。
+            // 2. 先创建会话、消息、run；如果后面锁获取失败，事务会整体回滚
             ChatSession session = chatSessionService.resolveOrCreateSession(
                     userId,
                     chatEntity.getSessionCode(),
@@ -120,13 +125,33 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
                     chatEntity.getMessage(),
                     botMsgId
             );
-            String sourceType = resolveSourceType(chatEntity);
             chatSessionService.appendUserMessage(session.getId(), chatEntity.getMessage(), sourceType);
-            Long assistantMessageId = chatSessionService.createAssistantPlaceholder(session.getId(), botMsgId, sourceType);
+            Long assistantMessageId = chatSessionService.createAssistantPlaceholder(
+                    session.getId(),
+                    botMsgId,
+                    sourceType
+            );
 
-            // 4. 创建运行主记录并初始化固定步骤。
-            Long runId = agentRunService.createRun(userId, session.getId(), botMsgId, chatEntity.getMessage());
+            Long runId = agentRunService.createRun(
+                    userId,
+                    session.getId(),
+                    botMsgId,
+                    chatEntity.getMessage()
+            );
             agentRunService.initSteps(runId, chatEntity);
+
+            // 3. 同一登录 session 同时只允许一个 running agent。
+            lockOwner = String.valueOf(runId);
+            Boolean locked = stringRedisTemplate.opsForValue().setIfAbsent(
+                    lockKey,
+                    lockOwner,
+                    AGENT_LOCK_TTL_SECONDS,
+                    TimeUnit.SECONDS
+            );
+            if (!Boolean.TRUE.equals(locked)) {
+                throw new IllegalArgumentException("当前已有任务执行中，请稍后再试");
+            }
+            lockAcquired = true;
 
             chatEntity.setSessionCode(session.getSessionCode());
 
@@ -136,9 +161,15 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
                     session.getId(),
                     assistantMessageId,
                     lockKey,
+                    lockOwner,
                     authenticatedUser,
                     chatEntity
             );
+
+            final Long dispatchedRunId = runId;
+            final Long dispatchedAssistantMessageId = assistantMessageId;
+            final String dispatchedLockKey = lockKey;
+            final String dispatchedLockOwner = lockOwner;
 
             // 6. 必须在事务提交后再派发异步任务，避免异步线程读到未提交数据。
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -147,11 +178,11 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
                     try {
                         agentAsyncService.executeAsync(context);
                     } catch (Exception e) {
-                        log.error("Agent任务派发失败, runId={}", runId, e);
-                        releaseLock(lockKey);
-                        agentRunService.markRunFailed(runId, "Agent任务派发失败");
+                        log.error("Agent任务派发失败, runId={}", dispatchedRunId, e);
+                        releaseLock(dispatchedLockKey, dispatchedLockOwner);
+                        agentRunService.markRunFailed(dispatchedRunId, "Agent任务派发失败");
                         chatSessionService.finishAssistantMessage(
-                                assistantMessageId,
+                                dispatchedAssistantMessageId,
                                 "任务派发失败，请稍后重试",
                                 null
                         );
@@ -170,7 +201,7 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
         } catch (RuntimeException e) {
             // 同步受理阶段异常时，必须立刻释放锁，避免本次事务回滚后仍占用锁。
             if (lockAcquired) {
-                releaseLock(lockKey);
+                releaseLock(lockKey, lockOwner);
             }
             throw e;
         }
@@ -202,12 +233,17 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
     }
 
     /**
-     * 释放 Redis 并发锁。
+     * 仅当当前 owner 匹配时才释放 Redis 并发锁
      */
-    private void releaseLock(String lockKey) {
-        if (StrUtil.isNotBlank(lockKey)) {
-            stringRedisTemplate.delete(lockKey);
+    private void releaseLock(String lockKey, String lockOwner) {
+        if (StrUtil.isBlank(lockKey) || StrUtil.isBlank(lockOwner)) {
+            return;
         }
+        stringRedisTemplate.execute(
+                COMPARE_AND_DELETE_SCRIPT,
+                Collections.singletonList(lockKey),
+                lockOwner
+        );
     }
 
     private String resolveSourceType(ChatEntity chatEntity) {

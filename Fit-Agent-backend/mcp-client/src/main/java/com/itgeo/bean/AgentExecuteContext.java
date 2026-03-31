@@ -15,6 +15,7 @@ public class AgentExecuteContext {
     private Long chatSessionId;
     private Long assistantMessageId;
     private String lockKey;
+    private String lockOwner;
     private AuthenticatedUserContext authenticatedUser;
     private ChatEntity chatEntity;
 }
