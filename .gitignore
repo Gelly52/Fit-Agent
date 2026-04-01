@@ -12,8 +12,6 @@
 .DS_Store
 
 HELP.md
-datasets/
-docs/
 # ==========================================
 # Build Output & Dependencies
 # ==========================================

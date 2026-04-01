@@ -1,0 +1,78 @@
+{
+  "datasetName": "fitness_mvp_v1_full_topk6",
+  "topK": 6,
+  "questions": [
+    {
+      "question": "成人每周至少需要多少中等强度有氧运动？",
+      "expectedFileName": "01_activity_guidelines_adults.txt"
+    },
+    {
+      "question": "如果主要做高强度运动，每周最低建议多少分钟？",
+      "expectedFileName": "01_activity_guidelines_adults.txt"
+    },
+    {
+      "question": "成年人每周至少几天做肌肉强化活动？",
+      "expectedFileName": "01_activity_guidelines_adults.txt"
+    },
+    {
+      "question": "夏天高温训练时，补水和降温最重要的做法是什么？",
+      "expectedFileName": "02_heat_hydration_safety.txt"
+    },
+    {
+      "question": "运动中头晕、虚弱、恶心和大量出汗，是否提示热相关风险？",
+      "expectedFileName": "02_heat_hydration_safety.txt"
+    },
+    {
+      "question": "炎热天气进行户外训练时，应该如何安排训练时段和强度？",
+      "expectedFileName": "02_heat_hydration_safety.txt"
+    },
+    {
+      "question": "经常力量训练的人每天蛋白质大约每公斤体重该吃多少？",
+      "expectedFileName": "03_protein_intake_basics.txt"
+    },
+    {
+      "question": "蛋白质分配到几餐更有利于肌肉修复？",
+      "expectedFileName": "03_protein_intake_basics.txt"
+    },
+    {
+      "question": "训练后要不要补蛋白，重点是总量还是只看时间点？",
+      "expectedFileName": "03_protein_intake_basics.txt"
+    },
+    {
+      "question": "运动前多久吃东西比较合适？",
+      "expectedFileName": "04_workout_fueling_carbs_timing.txt"
+    },
+    {
+      "question": "一小时以内的普通训练需要在中途吃碳水吗？",
+      "expectedFileName": "04_workout_fueling_carbs_timing.txt"
+    },
+    {
+      "question": "训练时间较长时，每小时补多少碳水更常见？",
+      "expectedFileName": "04_workout_fueling_carbs_timing.txt"
+    },
+    {
+      "question": "同一肌群的力量训练之间通常应留出多长恢复时间？",
+      "expectedFileName": "05_strength_recovery_basics.txt"
+    },
+    {
+      "question": "一周做几次力量训练对新手更稳妥？",
+      "expectedFileName": "05_strength_recovery_basics.txt"
+    },
+    {
+      "question": "恢复质量主要受哪些因素影响，比如睡眠和饮食？",
+      "expectedFileName": "05_strength_recovery_basics.txt"
+    },
+    {
+      "question": "过度训练有哪些典型预警信号？",
+      "expectedFileName": "06_overtraining_warning_signs.txt"
+    },
+    {
+      "question": "如果训练表现持续下降、睡眠变差、一直很累，是否可能训练过量？",
+      "expectedFileName": "06_overtraining_warning_signs.txt"
+    },
+    {
+      "question": "出现哪些情况时应该先暂停训练并考虑进一步评估？",
+      "expectedFileName": "06_overtraining_warning_signs.txt"
+    }
+  ]
+}

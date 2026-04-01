@@ -1,0 +1,35 @@
+标题：训练过量与过度训练的预警信号
+一句话摘要：偶尔短期疲劳可能只是过度超量后的正常恢复，但如果持续出现表现下降、异常疲劳、睡眠差、情绪波动或反复受伤、生病，就要把“训练过量”当成预警。
+
+适用对象：
+- 经常训练、准备提高训练量、担心恢复跟不上的一般人群。
+- 这份内容帮助识别预警，不代替医学诊断。
+
+核心结论：
+1. 短期 overreaching 可能在几天到两周内恢复；如果继续硬扛并长期表现下降，风险会升级。
+2. 典型预警包括：训练表现持续下滑、异常疲劳、恢复变慢、持续酸痛、睡眠变差、易烦躁或情绪低落、频繁感冒或受伤。
+3. 处理原则不是“再加练”，而是暂时降量或休息，同时检查睡眠、饮食、工作学习压力和总训练负荷。
+4. 如果症状持续数周仍不缓解，或已经明显影响日常生活、训练和情绪，应考虑暂停训练并做专业评估。
+
+实践建议：
+- 发现自己越来越累却练得更差时，先怀疑恢复不足，而不是先加码。
+- 用简单训练日志记录疲劳感、睡眠、训练表现和情绪变化。
+- 如果已经带伤、带病或长期睡眠不足，不要再叠加高强度训练计划。
+
+常见问法：
+- 我越练越累，是不是训练过量？
+- 训练过量最常见的警报有哪些？
+- 什么情况下应该先停下来再评估？
+
+关键词：
+训练过量、过度训练、表现下降、异常疲劳、睡眠差、情绪波动、恢复变慢、暂停训练
+
+参考来源：
+- NSCA: Overtraining
+  https://www.nsca.com/education/articles/kinetic-select/overtraining/
+- HSS: Overtraining: What It Is, Symptoms, and Recovery
+  https://www.hss.edu/health-library/move-better/overtraining
+- UC Denver Sports Medicine: Overtraining
+  https://www.ucdenver.edu/docs/librariesprovider65/clinical-services/sports-medicine/overtraining.pdf?sfvrsn=f1345bb9_2
+- Overtraining Syndrome: A Practical Guide
+  https://pmc.ncbi.nlm.nih.gov/articles/PMC3435910/

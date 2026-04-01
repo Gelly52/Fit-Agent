@@ -1,0 +1,35 @@
+标题：高温环境训练、补水与热相关风险
+一句话摘要：天气炎热时训练要提前补水、避开最热时段、逐步热适应；一旦出现头晕、虚弱、恶心或意识变化，应立即停止活动并转移到凉处。
+
+适用对象：
+- 炎热天气下进行跑步、快走、球类、力量训练或户外活动的一般人群。
+- 不代替急救或个体化医疗建议。
+
+核心结论：
+1. 高温训练尽量安排在清晨或傍晚，穿宽松、轻薄、浅色衣物，减少正午暴晒。
+2. 不要等口渴才喝水。高温活动时应小口、规律补水；长时间大量出汗时可考虑补充含电解质饮料。
+3. 新进入高温环境或久未适应的人，要逐步增加训练时长和强度，不要第一天就高强度长时间训练。
+4. 训练中如果出现头晕、虚弱、恶心、肌肉痉挛、意识模糊、接近晕厥或明显异常疲劳，应立即停止活动并尽快降温。
+
+安全做法：
+- 天热时优先降低配速和总量，再考虑是否继续训练。
+- 训练时选择阴凉路线，准备水和简单降温方式。
+- 如果感觉发软、发飘、冒冷汗或思路变慢，不要硬扛。
+
+常见问法：
+- 夏天跑步怎么喝水更安全？
+- 运动中头晕、恶心、腿抽筋是不是热衰竭前兆？
+- 炎热天气应该什么时候练、穿什么、怎么降温？
+
+关键词：
+高温训练、补水、热痉挛、热衰竭、中暑、头晕、虚弱、电解质、清晨训练、傍晚训练
+
+参考来源：
+- CDC: Heat and Athletes
+  https://www.cdc.gov/heat-health/risk-factors/heat-and-athletes.html
+- OSHA: Water. Rest. Shade.
+  http://www.osha.gov/heat-exposure/water-rest-shade
+- CDC/NIOSH: Heat Stress Hydration
+  https://www.cdc.gov/niosh/mining/UserFiles/works/products/training/keepingcool/2017-126_hydration.pdf
+- Academy of Nutrition and Dietetics: Exercise Safely in Hot Weather
+  https://www.eatright.org/fitness/physical-activity/exercise-nutrition/exercise-safely-in-hot-weather

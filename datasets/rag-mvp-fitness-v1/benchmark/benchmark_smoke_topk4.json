@@ -1,0 +1,30 @@
+{
+  "datasetName": "fitness_mvp_v1_smoke_topk4",
+  "topK": 4,
+  "questions": [
+    {
+      "question": "成人每周至少需要多少中等强度有氧运动？",
+      "expectedFileName": "01_activity_guidelines_adults.txt"
+    },
+    {
+      "question": "夏天高温训练时，补水和降温最重要的做法是什么？",
+      "expectedFileName": "02_heat_hydration_safety.txt"
+    },
+    {
+      "question": "经常力量训练的人每天蛋白质大约每公斤体重该吃多少？",
+      "expectedFileName": "03_protein_intake_basics.txt"
+    },
+    {
+      "question": "运动前多久吃东西比较合适？",
+      "expectedFileName": "04_workout_fueling_carbs_timing.txt"
+    },
+    {
+      "question": "同一肌群的力量训练之间通常应留出多长恢复时间？",
+      "expectedFileName": "05_strength_recovery_basics.txt"
+    },
+    {
+      "question": "过度训练有哪些典型预警信号？",
+      "expectedFileName": "06_overtraining_warning_signs.txt"
+    }
+  ]
+}
