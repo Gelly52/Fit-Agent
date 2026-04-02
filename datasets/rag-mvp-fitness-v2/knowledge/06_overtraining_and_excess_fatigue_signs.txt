@@ -1,0 +1,39 @@
+标题：训练过量、疲劳堆积与预警信号
+一句话摘要：短期疲劳不一定就是问题，但如果持续出现训练表现下降、异常疲劳、恢复变慢、睡眠变差、情绪波动或频繁小病小伤，就应把训练过量当成预警并及时调整。
+
+适用对象：
+- 经常训练、准备增加训练量、担心恢复跟不上的一般人群。
+- 用于识别风险信号，不代替医学诊断。
+
+核心结论：
+1. 短期 overreaching 可能只是短时间内疲劳较高，经过几天到一两周恢复后能回到正常水平；但如果长期硬扛，问题会逐渐放大。
+2. 典型预警信号包括：训练表现持续下降、异常疲劳、恢复变慢、持续酸痛、睡眠变差、烦躁、情绪低落、频繁感冒或反复小伤。
+3. 出现这些信号时，最先该做的通常不是“再加练”，而是降训练量、补睡眠、检查饮食和压力来源。
+4. 如果疲劳已经持续数周，或者明显影响日常生活、工作学习和训练意愿，就不适合继续按原计划推进。
+5. 带伤、带病、长期熬夜或高压状态下继续叠加高强度训练，往往会让问题恶化得更快。
+
+实践建议：
+- 用简单训练日志记录疲劳感、睡眠、训练表现和情绪变化，比只凭印象更容易发现趋势。
+- 当你越来越累却练得越来越差时，优先怀疑恢复不足，而不是立刻怀疑“我还不够努力”。
+- 如果已经开始怕训练、拖延训练或训练完几天都缓不过来，就应该主动降量。
+- 恢复调整不一定等于完全停训，也可以是减少训练组数、降低强度或缩短训练时间。
+- 持续异常时应考虑进一步评估，而不是无限拖延。
+
+常见问法：
+- 过度训练有哪些典型预警信号？
+- 如果训练表现持续下降、睡眠变差、一直很累，是否可能训练过量？
+- 出现哪些情况时应该先暂停训练并考虑进一步评估？
+- 为什么越练越累却练得更差？
+
+关键词：
+训练过量、过度训练、表现下降、异常疲劳、睡眠差、情绪波动、恢复变慢、暂停训练
+
+参考来源：
+- NSCA: Overtraining
+  https://www.nsca.com/education/articles/kinetic-select/overtraining/
+- HSS: Overtraining: What It Is, Symptoms, and Recovery
+  https://www.hss.edu/health-library/move-better/overtraining
+- UC Denver Sports Medicine: Overtraining
+  https://www.ucdenver.edu/docs/librariesprovider65/clinical-services/sports-medicine/overtraining.pdf?sfvrsn=f1345bb9_2
+- Overtraining Syndrome: A Practical Guide
+  https://pmc.ncbi.nlm.nih.gov/articles/PMC3435910/

@@ -192,8 +192,12 @@
                 v-for="(doc, idx) in uploadedDocs"
                 :key="idx"
               >
-                <span class="view-history-date">{{ doc.date || "--" }}</span>
-                <span class="view-history-detail">{{ doc.name }}</span>
+                <span class="view-history-date">{{
+                  formatChatSessionTime(doc.createdAt) || "--"
+                }}</span>
+                <span class="view-history-detail">{{
+                  doc.fileName || "--"
+                }}</span>
               </div>
             </div>
           </div>
@@ -626,9 +630,16 @@ export default {
           var data = res && res.data;
           if (Array.isArray(data)) {
             me.uploadedDocs = data;
+            me.docCount = data.length;
+            me.uploadSynced = true;
+          } else {
+            me.uploadedDocs = [];
+            me.docCount = 0;
+            me.uploadSynced = false;
           }
         })
         .catch(function () {
+          me.uploadSynced = false;
           // API not available, keep empty
         });
     },
@@ -1921,8 +1932,8 @@ export default {
               this.guidanceMessage =
                 "知识库文档上传成功，可切换到知识库增强模式继续提问。";
               this.showUiMessage("success", "上传知识库文档成功！");
-              this.docCount = this.docCount + 1;
-              this.uploadSynced = true;
+              this.uploadSynced = false;
+              this.fetchUploadedDocs();
               if (params && typeof params.onSuccess === "function") {
                 params.onSuccess(response, file);
               }

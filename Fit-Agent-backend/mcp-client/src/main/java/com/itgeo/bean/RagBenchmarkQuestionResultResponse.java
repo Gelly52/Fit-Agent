@@ -16,4 +16,12 @@ public class RagBenchmarkQuestionResultResponse {
     private Boolean hit;
     private List<String> retrievedFileNames;
     private String topHitPreview;
+    private Integer firstHitChunkRank;
+    private Integer firstHitFileRank;
+    private Boolean top1Hit;
+    private Double reciprocalRank;
+    private Integer retrievedChunkCount;
+    private Integer uniqueRetrievedFileCount;
+    private Integer duplicateChunkCount;
+    private String top1FileName;
 }

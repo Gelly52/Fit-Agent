@@ -31,13 +31,31 @@ Fit-Agent 是一个面向健身场景的 AI 助手项目，当前仓库包含 Vu
 
 ```text
 Fit-Agent
-├─ Fit-Agent-frontend          # Vue 3 + Vite 前端
-├─ Fit-Agent-backend
-│  ├─ mcp-client               # 业务后端，默认 7070
-│  └─ mcp-server               # MCP 服务端
-├─ datasets
-│  └─ rag-mvp-fitness-v1       # RAG 知识文件、benchmark、来源索引
-└─ docs                        # API 文档与实现流程文档
+├─ Fit-Agent-frontend/
+│  ├─ src/                          # Vue 3 前端源码
+│  ├─ package.json                  # 前端依赖与脚本
+│  ├─ vite.config.js                # Vite 配置
+│  └─ fitagent-vite.html            # 前端入口页面
+├─ Fit-Agent-backend/
+│  ├─ mcp-client/                   # 业务后端，默认 7070
+│  │  └─ src/main/                  # 主要源码与资源目录
+│  ├─ mcp-server/                   # MCP 服务端模块
+│  │  └─ src/main/resources/sql/    # 数据库初始化 SQL
+│  └─ pom.xml                       # 后端父级 Maven 工程
+├─ datasets/
+│  ├─ rag-mvp-fitness-v1/           # 历史 RAG 数据集
+│  └─ rag-mvp-fitness-v2/           # 当前数据集、benchmark 与结果汇总
+├─ docs/
+│  ├─ database/                     # 数据库相关文档
+│  ├─ API接口文档.md                # 接口文档
+│  ├─ RAG检索增强生成实现流程.md     # RAG 实现流程说明
+│  ├─ 登录与注册实现流程.md          # 登录注册流程说明
+│  └─ 聊天与Agent模式实现流程.md     # 聊天与 Agent 流程说明
+├─ pics/
+│  └─ fronted.png                   # README 截图
+├─ .gitignore
+├─ README.md
+└─ README_CN.md
 ```
 
 ## 环境要求
@@ -55,20 +73,30 @@ Fit-Agent
 当前代码中的默认开发配置如下：
 
 - 前端：`http://127.0.0.1:5500`
-- 后端：`http://127.0.0.1:7070`
+- 后端 API（`mcp-client`）：`http://127.0.0.1:7070`
+- MCP Server：`http://127.0.0.1:9070`
 - MySQL：`jdbc:mysql://127.0.0.1:5506/springai-items-mcp`
 - Redis：`127.0.0.1:9379`
 - SearXNG：`http://127.0.0.1:6080/search`
-- Redis 向量索引：`lee-vectorstore`
+- 可选本地 embedding 服务：`http://127.0.0.1:7086`
 
-模型与数据库连接可通过环境变量或 `.env` 提供，当前代码已使用到的关键项包括：
+配置示例与环境变量样例：
 
-- `OPENAI_API_KEY`
-- `OPENAI_BASE_URL`
-- `OPENAI_MODEL`
-- `MYSQL_URL`
-- `MYSQL_USERNAME`
-- `MYSQL_PASSWORD`
+- `Fit-Agent-backend/mcp-client/src/main/resources/application-dev.example.yml`
+- `Fit-Agent-backend/mcp-client/src/main/resources/.env.example`
+- `Fit-Agent-backend/mcp-server/src/main/resources/application-dev.example.yml`
+- `Fit-Agent-backend/mcp-server/src/main/resources/.env.example`
+
+可选配置：本地 embedding 服务（`bge-m3`）
+
+- 端口：`7086`
+- 在 embedding 服务目录下执行：
+
+```powershell
+python -m uvicorn main:app --host 127.0.0.1 --port 7086
+```
+
+- 详细配置、向量索引隔离与实现说明见 `docs/RAG检索增强生成实现流程.md`。
 
 ## 快速开始
 
@@ -100,16 +128,17 @@ npm run dev -- --host 127.0.0.1 --port 5500
 
 访问：`http://127.0.0.1:5500/fitagent-vite.html`
 
-## 文档与数据
+## 功能介绍
 
-- 接口文档：`docs/API_文档.md`
-- RAG 流程文档：`docs/RAG检索增强生成实现流程.md`
-- RAG benchmark：`datasets/rag-mvp-fitness-v1/benchmark/`
-- 知识来源索引：`datasets/rag-mvp-fitness-v1/sources/source_index.md`
+- 认证与会话链路：支持手机号验证码登录、token 鉴权，以及基于 SSE ticket 的流式连接建立，覆盖完整会话入口。
+- 对话与 Agent 执行：支持普通流式聊天、Agent 任务执行和运行状态查询，满足问答与任务协同两类场景。
+- RAG 知识增强：支持文档上传、检索、知识问答和 benchmark 评测；embedding 层也支持接入本地部署的 `bge-m3` 模型。
+- 联网搜索与健身记录：支持基于 SearXNG 的搜索增强问答，同时提供训练日志和身体指标记录能力。
 
 ## 注意事项
 
 - 受保护接口正式只信任 `headerUserToken`；前端默认从 cookie `user_token` 注入。
 - SSE 连接需先调用 `POST /user/sse-ticket`，再使用 `GET /sse/connect?ticket=...` 建连。
+- 本地 `bge-m3` embedding 部署与配置细节见 `docs/RAG检索增强生成实现流程.md`。
 - 当前 RAG 检索与 benchmark 均按登录用户隔离。
-- 详细接口字段、示例与返回结构以 `docs/API_文档.md` 为准。
+- 详细接口字段、示例与返回结构以 `docs/API接口文档.md` 为准。

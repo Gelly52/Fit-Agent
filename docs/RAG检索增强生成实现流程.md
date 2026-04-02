@@ -1,4 +1,4 @@
-# RAG检索增强生成实现流程
+# RAG 检索增强生成实现流程
 
 ## 1. 当前实现范围
 
@@ -40,6 +40,47 @@
 - 当前代码写入的文档状态是 `READY`。
 - 前端当前通常限制上传 `.txt` 且不超过 10MB，但后端当前没有做显式扩展名与大小强校验，因此这仍属于前端限制，不是后端硬约束。
 
+### 2.1 Embedding 模型与配置来源
+
+- 当前 RAG 的 embedding 与向量索引配置由 `RagEmbeddingProperties` 统一承接。
+- 代码中的默认值为：
+  - `rag.embedding.provider = transformers-default`
+  - `rag.embedding.service-url = http://127.0.0.1:7086`
+  - `rag.embedding.model-name = bge-m3`
+  - `rag.embedding.dimension = 1024`
+  - `rag.vectorstore.index-name = lee-vectorstore`
+  - `rag.vectorstore.prefix = embedding:`
+- `mcp-client/src/main/resources/application-dev.example.yml` 当前没有把 `rag.*` 显式写出；如果需要切换 embedding 实现，需要在本地配置文件中补充。
+
+### 2.2 切换到本地 bge-m3 HTTP 服务
+
+- 当 `rag.embedding.provider = bge-m3-http` 时，`RagRedisVectorStoreConfig` 会创建 `BgeM3HttpEmbeddingModel`。
+- `BgeM3HttpEmbeddingModel` 当前会把文本批量发送到 `${serviceUrl}/embed`，再把返回向量包装成 Spring AI `EmbeddingResponse`。
+- 本地配置可按下面的形式补充：
+
+```yml
+rag:
+  embedding:
+    provider: bge-m3-http
+    service-url: http://127.0.0.1:7086
+    model-name: bge-m3
+    dimension: 1024
+  vectorstore:
+    index-name: lee-vectorstore-bgem3
+    prefix: "embedding:bgem3:"
+```
+
+- 启用前需要先确保本地 `bge-m3` HTTP 服务已经启动，再启动 `mcp-client`。
+
+### 2.3 Redis Vector Store 索引与前缀隔离
+
+- `RagRedisVectorStoreConfig.buildRedisVectorStore()` 会把 `indexName` 与 `prefix` 应用到 `RedisVectorStore`。
+- 如果继续复用默认 `lee-vectorstore` / `embedding:`，不同 embedding 模型生成的向量会落到同一套索引命名空间。
+- 当前更稳妥的做法是为 `bge-m3` 单独使用：
+  - `index-name = lee-vectorstore-bgem3`
+  - `prefix = embedding:bgem3:`
+- 这样在切换 embedding 模型时，可以避免旧向量与新向量混用。
+
 ## 3. 检索入口与用户隔离
 
 - 手动检索入口是 `GET /rag/doSearch`。
@@ -71,7 +112,7 @@
   5. 返回 `LeeResult<ChatResponseEntity>`；
   6. 同时继续通过 SSE 推送 `add` / `finish` 事件。
 - 当前手动调试可以直接走 `/rag/search`。
-- 当前主聊天链路若要带知识库增强，更推荐通过主入口开关接入，具体联调契约可继续参考 `docs/API_文档.md`。
+- 当前主聊天链路若要带知识库增强，更推荐通过主入口开关接入，具体联调契约可继续参考 `docs/API接口文档.md`。
 
 ## 5. 文档列表与配置接口
 
@@ -227,20 +268,23 @@
 - 当前 benchmark 控制台联调示例：
 
 ```javascript
-window.doctorApi.benchmarkEvaluate({
-  datasetName: "smoke-v1",
-  topK: 4,
-  questions: [
-    {
-      question: "深蹲的核心动作要点是什么？",
-      expectedFileName: "squat-guide.txt"
-    },
-    {
-      question: "蛋白质摄入建议是多少？",
-      expectedFileName: "nutrition-notes.txt"
-    }
-  ]
-}).then(console.log).catch(console.error)
+window.doctorApi
+  .benchmarkEvaluate({
+    datasetName: "smoke-v1",
+    topK: 4,
+    questions: [
+      {
+        question: "深蹲的核心动作要点是什么？",
+        expectedFileName: "squat-guide.txt",
+      },
+      {
+        question: "蛋白质摄入建议是多少？",
+        expectedFileName: "nutrition-notes.txt",
+      },
+    ],
+  })
+  .then(console.log)
+  .catch(console.error);
 ```
 
 - 联调前建议：
@@ -254,11 +298,14 @@ window.doctorApi.benchmarkEvaluate({
 - 控制器：`Fit-Agent-backend/mcp-client/src/main/java/com/itgeo/controller/RagController.java`
 - 文档服务接口：`Fit-Agent-backend/mcp-client/src/main/java/com/itgeo/service/DocumentService.java`
 - 文档服务实现：`Fit-Agent-backend/mcp-client/src/main/java/com/itgeo/service/impl/DocumentServiceImpl.java`
+- Embedding 配置属性：`Fit-Agent-backend/mcp-client/src/main/java/com/itgeo/config/RagEmbeddingProperties.java`
+- Redis Vector Store 配置：`Fit-Agent-backend/mcp-client/src/main/java/com/itgeo/config/RagRedisVectorStoreConfig.java`
+- 本地 bge-m3 HTTP embedding：`Fit-Agent-backend/mcp-client/src/main/java/com/itgeo/service/embedding/BgeM3HttpEmbeddingModel.java`
 - Benchmark 服务接口：`Fit-Agent-backend/mcp-client/src/main/java/com/itgeo/service/RagBenchmarkService.java`
 - Benchmark 服务实现：`Fit-Agent-backend/mcp-client/src/main/java/com/itgeo/service/impl/RagBenchmarkServiceImpl.java`
 - 文档实体：`Fit-Agent-backend/mcp-client/src/main/java/com/itgeo/pojo/RagDocument.java`
 - Benchmark run 实体：`Fit-Agent-backend/mcp-client/src/main/java/com/itgeo/pojo/RagBenchmarkRun.java`
-- API 总文档：`docs/API_文档.md`
+- API 总文档：`docs/API接口文档.md`
 
 ## 10. 当前实现的关键结论
 
@@ -272,4 +319,4 @@ window.doctorApi.benchmarkEvaluate({
   - 配置仍是代码常量，不是数据库配置；
   - 上传接口还没有后端侧的文件类型与大小强校验；
   - benchmark 只评估“检索命中率”，不评估“答案正确率”；
-  - `metadata.fileName` 和 `metadata.userId` 是当前实现的关键依赖，后续若修改，必须同步更新实现与文档。 
+  - `metadata.fileName` 和 `metadata.userId` 是当前实现的关键依赖，后续若修改，必须同步更新实现与文档。

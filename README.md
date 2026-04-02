@@ -31,13 +31,23 @@ Fit-Agent is an AI assistant project for fitness scenarios. The repository curre
 
 ```text
 Fit-Agent
-├─ Fit-Agent-frontend          # Vue 3 + Vite frontend
-├─ Fit-Agent-backend
-│  ├─ mcp-client               # Business backend, default port 7070
-│  └─ mcp-server               # MCP server
+├─ Fit-Agent-frontend/
+│  ├─ src/                          # Vue 3 application source
+│  ├─ package.json                  # Frontend dependencies and scripts
+│  ├─ vite.config.js                # Vite configuration
+│  └─ fitagent-vite.html            # Frontend entry page
+├─ Fit-Agent-backend/
+│  ├─ mcp-client/                   # Business backend, default port 7070
+│  │  └─ src/main/                  # Main source code and resources
+│  ├─ mcp-server/                   # MCP server module
+│  │  └─ src/main/resources/sql/    # Database bootstrap SQL
+│  └─ pom.xml                       # Backend parent Maven project
 ├─ datasets
-│  └─ rag-mvp-fitness-v1       # RAG knowledge files, benchmarks, source index
-└─ docs                        # API docs and implementation flow docs
+├─ docs
+├─ pics
+├─ .gitignore
+├─ README.md
+└─ README_CN.md
 ```
 
 ## Requirements
@@ -55,20 +65,30 @@ Fit-Agent
 The default development configuration in the current codebase is:
 
 - Frontend: `http://127.0.0.1:5500`
-- Backend: `http://127.0.0.1:7070`
+- Backend API (`mcp-client`): `http://127.0.0.1:7070`
+- MCP Server: `http://127.0.0.1:9070`
 - MySQL: `jdbc:mysql://127.0.0.1:5506/springai-items-mcp`
 - Redis: `127.0.0.1:9379`
 - SearXNG: `http://127.0.0.1:6080/search`
-- Redis vector index: `lee-vectorstore`
+- Optional local embedding service: `http://127.0.0.1:7086`
 
-Model and database connections can be provided through environment variables or `.env`. The key items currently used by the code include:
+Configuration examples and environment variable samples:
 
-- `OPENAI_API_KEY`
-- `OPENAI_BASE_URL`
-- `OPENAI_MODEL`
-- `MYSQL_URL`
-- `MYSQL_USERNAME`
-- `MYSQL_PASSWORD`
+- `Fit-Agent-backend/mcp-client/src/main/resources/application-dev.example.yml`
+- `Fit-Agent-backend/mcp-client/src/main/resources/.env.example`
+- `Fit-Agent-backend/mcp-server/src/main/resources/application-dev.example.yml`
+- `Fit-Agent-backend/mcp-server/src/main/resources/.env.example`
+
+Optional local embedding service (`bge-m3`):
+
+- Port: `7086`
+- In the local embedding service directory, run:
+
+```powershell
+python -m uvicorn main:app --host 127.0.0.1 --port 7086
+```
+
+- Detailed configuration, vector index isolation, and implementation notes are documented in `docs/RAG检索增强生成实现流程.md`.
 
 ## Quick Start
 
@@ -100,16 +120,17 @@ npm run dev -- --host 127.0.0.1 --port 5500
 
 Open: `http://127.0.0.1:5500/fitagent-vite.html`
 
-## Docs and Data
+## Feature Overview
 
-- API documentation: `docs/API_文档.md`
-- RAG flow documentation: `docs/RAG检索增强生成实现流程.md`
-- RAG benchmarks: `datasets/rag-mvp-fitness-v1/benchmark/`
-- Source index: `datasets/rag-mvp-fitness-v1/sources/source_index.md`
+- Authentication and session flow: SMS-code login, token authentication, and SSE ticket-based connection support the full conversation lifecycle.
+- Chat and Agent collaboration: the system supports streaming chat, Agent task execution, and run tracking for task-oriented interactions.
+- RAG knowledge enhancement: users can upload documents, retrieve relevant content, ask knowledge-grounded questions, and run retrieval benchmarks. The embedding layer also supports a locally deployed `bge-m3` model.
+- Search and fitness records: SearXNG-based web search augmentation is available alongside training log and body metrics recording features.
 
 ## Notes
 
 - Protected endpoints officially trust only `headerUserToken`; the frontend injects it from the `user_token` cookie by default.
 - To establish an SSE connection, call `POST /user/sse-ticket` first, then connect with `GET /sse/connect?ticket=...`.
+- The local `bge-m3` embedding deployment details are documented in `docs/RAG检索增强生成实现流程.md`.
 - Current RAG retrieval and benchmarks are isolated by the logged-in user.
-- For detailed fields, examples, and response structures, refer to `docs/API_文档.md`.
+- For detailed fields, examples, and response structures, refer to `docs/API接口文档.md`.

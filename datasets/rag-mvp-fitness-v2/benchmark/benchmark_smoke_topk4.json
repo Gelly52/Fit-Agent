@@ -1,0 +1,46 @@
+{
+  "datasetName": "fitness_mvp_v2_smoke_topk4",
+  "topK": 4,
+  "questions": [
+    {
+      "question": "成年人每周至少需要多少中等强度有氧活动？",
+      "expectedFileName": "01_activity_targets_for_adults.txt"
+    },
+    {
+      "question": "高温天气训练时，最重要的补水与降温原则是什么？",
+      "expectedFileName": "02_hot_weather_hydration_safety.txt"
+    },
+    {
+      "question": "经常训练的人每天蛋白质大约每公斤体重应吃多少？",
+      "expectedFileName": "03_protein_intake_for_training.txt"
+    },
+    {
+      "question": "训练前多久吃东西通常比较合适？",
+      "expectedFileName": "04_workout_fueling_and_carb_timing.txt"
+    },
+    {
+      "question": "同一肌群的力量训练之间通常应间隔多久恢复？",
+      "expectedFileName": "05_strength_training_recovery_planning.txt"
+    },
+    {
+      "question": "训练过量最常见的预警信号有哪些？",
+      "expectedFileName": "06_overtraining_and_excess_fatigue_signs.txt"
+    },
+    {
+      "question": "训练前热身一般建议做多久？",
+      "expectedFileName": "07_warmup_and_cooldown_basics.txt"
+    },
+    {
+      "question": "减脂最核心的底层原则是不是热量缺口？",
+      "expectedFileName": "08_fat_loss_and_calorie_deficit_basics.txt"
+    },
+    {
+      "question": "多数成年人为了恢复和健康，通常至少应睡多久？",
+      "expectedFileName": "09_sleep_and_recovery_basics.txt"
+    },
+    {
+      "question": "肌酸一水合物最常见的日常补充剂量是多少？",
+      "expectedFileName": "10_creatine_monohydrate_basics.txt"
+    }
+  ]
+}

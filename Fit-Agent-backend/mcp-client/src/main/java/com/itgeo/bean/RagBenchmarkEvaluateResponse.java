@@ -20,4 +20,9 @@ public class RagBenchmarkEvaluateResponse {
     private Boolean userIsolationEnabled;
     private String isolationStrategy;
     private List<RagBenchmarkQuestionResultResponse> results;
+    private Integer top1HitCount;
+    private Double top1HitRate;
+    private Double mrr;
+    private Double avgFirstHitFileRank; // 建议只对命中的题求平均
+    private Double avgUniqueRetrievedFileCount; // 能看 topK 的文件覆盖度
 }

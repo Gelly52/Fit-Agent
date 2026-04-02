@@ -66,7 +66,6 @@ public class DocumentServiceImpl implements DocumentService {
 
         redisVectorStore.add(splitDocuments);
 
-        // 文档索引入库
         RagDocument ragDocument = new RagDocument();
         ragDocument.setUserId(userId);
         ragDocument.setFileName(safeFileName);
@@ -108,18 +107,15 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public List<RagDocumentItem> listUserDocuments(Long userId) {
-        // 1. 校验 userId
         if (userId == null) {
             throw new IllegalArgumentException("userId不能为空");
         }
 
-        // 2. 查询当前用户文档
         List<RagDocument> ragDocuments = ragDocumentMapper.selectList(new LambdaQueryWrapper<RagDocument>()
                 .eq(RagDocument::getUserId, userId)
                 .orderByDesc(RagDocument::getCreatedAt));
 
-        // 3. 把 List<RagDocument> 转成 List<RagDocumentItem>
-        List<RagDocumentItem> documentItems = ragDocuments.stream().map(ragDocument -> new RagDocumentItem(
+        return ragDocuments.stream().map(ragDocument -> new RagDocumentItem(
                         ragDocument.getId(),
                         ragDocument.getFileName(),
                         ragDocument.getSourceCount(),
@@ -127,8 +123,6 @@ public class DocumentServiceImpl implements DocumentService {
                         ragDocument.getStatus(),
                         ragDocument.getCreatedAt()))
                 .collect(Collectors.toList());
-        // 4. 返回列表
-        return documentItems;
     }
 
     @Override

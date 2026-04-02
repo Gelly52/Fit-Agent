@@ -30,6 +30,13 @@ public class RagBenchmarkServiceImpl implements RagBenchmarkService {
 
     @Override
     public RagBenchmarkEvaluateResponse evaluate(Long userId, RagBenchmarkEvaluateRequest request) {
+
+        int top1HitCount = 0;
+        double reciprocalRankSum = 0D;
+        int firstHitFileRankSum = 0;
+        int firstHitFileRankCount = 0;
+        int uniqueRetrievedFileCountSum = 0;
+
         validateRequest(userId, request);
 
         String datasetName = normalizeNullableText(request.getDatasetName());
@@ -59,12 +66,32 @@ public class RagBenchmarkServiceImpl implements RagBenchmarkService {
                         userId,
                         effectiveTopK
                 );
-
+                List<String> chunkFileNames = extractChunkFileNames(documents);
                 List<String> retrievedFileNames = extractRetrievedFileNames(documents);
-                boolean hit = retrievedFileNames.stream().anyMatch(expectedFileName::equals);
+
+                Integer firstHitChunkRank = findRank(chunkFileNames, expectedFileName);
+                Integer firstHitFileRank = findRank(retrievedFileNames, expectedFileName);
+
+                boolean hit = firstHitFileRank != null;
+                boolean top1Hit = Integer.valueOf(1).equals(firstHitFileRank);
+                double reciprocalRank = firstHitFileRank == null ? 0D : 1D / firstHitFileRank;
+
+                int retrievedChunkCount = chunkFileNames.size();
+                int uniqueRetrievedFileCount = retrievedFileNames.size();
+                int duplicateChunkCount = retrievedChunkCount - uniqueRetrievedFileCount;
+                String top1FileName = retrievedFileNames.isEmpty() ? null : retrievedFileNames.get(0);
 
                 if (hit) {
                     hitCount++;
+                }
+                if (top1Hit) {
+                    top1HitCount++;
+                }
+                reciprocalRankSum += reciprocalRank;
+                uniqueRetrievedFileCountSum += uniqueRetrievedFileCount;
+                if (firstHitFileRank != null) {
+                    firstHitFileRankSum += firstHitFileRank;
+                    firstHitFileRankCount++;
                 }
 
                 RagBenchmarkQuestionResultResponse questionResult = new RagBenchmarkQuestionResultResponse();
@@ -74,6 +101,14 @@ public class RagBenchmarkServiceImpl implements RagBenchmarkService {
                 questionResult.setHit(hit);
                 questionResult.setRetrievedFileNames(retrievedFileNames);
                 questionResult.setTopHitPreview(buildTopHitPreview(documents));
+                questionResult.setFirstHitChunkRank(firstHitChunkRank);
+                questionResult.setFirstHitFileRank(firstHitFileRank);
+                questionResult.setTop1Hit(top1Hit);
+                questionResult.setReciprocalRank(reciprocalRank);
+                questionResult.setRetrievedChunkCount(retrievedChunkCount);
+                questionResult.setUniqueRetrievedFileCount(uniqueRetrievedFileCount);
+                questionResult.setDuplicateChunkCount(duplicateChunkCount);
+                questionResult.setTop1FileName(top1FileName);
                 results.add(questionResult);
             }
 
@@ -88,6 +123,15 @@ public class RagBenchmarkServiceImpl implements RagBenchmarkService {
             response.setUserIsolationEnabled(ragConfig.getUserIsolationEnabled());
             response.setIsolationStrategy(ragConfig.getIsolationStrategy());
             response.setResults(results);
+            response.setTop1HitCount(top1HitCount);
+            response.setTop1HitRate((double) top1HitCount / request.getQuestions().size());
+            response.setMrr(reciprocalRankSum / request.getQuestions().size());
+            response.setAvgUniqueRetrievedFileCount(
+                    (double) uniqueRetrievedFileCountSum / request.getQuestions().size()
+            );
+            response.setAvgFirstHitFileRank(
+                    firstHitFileRankCount == 0 ? null : (double) firstHitFileRankSum / firstHitFileRankCount
+            );
 
             markRunSuccess(run.getId(), response);
             return response;
@@ -237,5 +281,39 @@ public class RagBenchmarkServiceImpl implements RagBenchmarkService {
 
     private String normalizeNullableText(String text) {
         return hasText(text) ? text.trim() : null;
+    }
+
+    private List<String> extractChunkFileNames(List<Document> documents) {
+        List<String> fileNames = new ArrayList<>();
+        if (documents == null) {
+            return fileNames;
+        }
+
+        for (Document document : documents) {
+            if (document == null || document.getMetadata() == null) {
+                continue;
+            }
+            Object metadataFileName = document.getMetadata().get("fileName");
+            if (metadataFileName == null) {
+                continue;
+            }
+            String fileName = String.valueOf(metadataFileName).trim();
+            if (!fileName.isEmpty()) {
+                fileNames.add(fileName);
+            }
+        }
+        return fileNames;
+    }
+
+    private Integer findRank(List<String> items, String target) {
+        if (items == null || target == null) {
+            return null;
+        }
+        for (int i = 0; i < items.size(); i++) {
+            if (target.equals(items.get(i))) {
+                return i + 1;
+            }
+        }
+        return null;
     }
 }
