@@ -1,30 +1,33 @@
 package com.itgeo.enums;
 
 /**
- * @author gzx
- * @description: SSE消息类型
- * @date 2024-05-20 10:00:00
+ * SSE 消息类型枚举，约定服务端推送给前端的事件类别。
  */
 public enum SSEMsgType {
     /**
-     * 普通消息
+     * 单次完整消息推送，适用于非流式场景。
      */
-    MESSAGE("message", "单词发送的普通类型消息"),
+    MESSAGE("message", "单次完整消息"),
     /**
-     * 添加消息
+     * 流式追加分片，前端按顺序拼接内容。
      */
-    ADD("add", "消息追加，适用于流式stream推送"),
+    ADD("add", "流式追加分片"),
     /**
-     * 完成消息
+     * 本轮输出结束事件，通常携带最终结果快照。
      */
-    FINISH("finish", "消息完成"),
+    FINISH("finish", "输出结束事件"),
     /**
-     * 自定义事件
+     * 业务自定义事件，当前主要用于 Agent 步骤状态通知。
      */
-    CUSTOM_EVENT("custom_event", "自定义事件"),
-    DONE("done", "消息完成"); //ChatGLM
+    CUSTOM_EVENT("custom_event", "业务自定义事件"),
+    /**
+     * 兼容部分上游协议的结束标记，作为预留类型保留，不等同于业务 FINISH 载荷。
+     */
+    DONE("done", "兼容结束标记");
 
+    /** 事件类型编码。 */
     public final String type;
+    /** 类型说明文本。 */
     public final String value;
 
     SSEMsgType(String type, String value) {

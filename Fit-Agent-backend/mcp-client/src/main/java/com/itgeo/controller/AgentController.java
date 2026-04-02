@@ -13,13 +13,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Agent 执行入口控制器。
+ * Agent 控制器。
  *
  * 职责：
- * 1. 接收 /agent/execute 请求；
- * 2. 从鉴权上下文提取当前用户；
- * 3. 调用 AgentExecuteService 完成任务受理；
- * 4. 返回标准 LeeResult 响应。
+ * 1. 接收 Agent 执行与查询请求；
+ * 2. 从鉴权上下文提取当前登录用户；
+ * 3. 调用对应服务完成受理或查询；
+ * 4. 统一包装 LeeResult 响应。
  */
 @Slf4j
 @RestController
@@ -32,11 +32,9 @@ public class AgentController {
     @Resource
     private AgentRunService agentRunService;
 
-    /**
-     * 受理一条 Agent 执行请求。
-     * 说明：
-     * - 该接口只负责“受理”，不会等待最终回答生成；
-     * - 最终 SSE 推流与结果落库由异步链路继续完成。
+/**
+     * 接收一条 Agent 执行请求并返回受理结果。
+     *
      * @param chatEntity 聊天请求体
      * @return 受理结果
      */
@@ -54,8 +52,8 @@ public class AgentController {
         }
     }
 
-    /**
-     * 查询当前登录用户最近的 Agent 运行列表。
+/**
+     * 查询当前登录用户最近的 Agent run 列表。
      */
     @GetMapping("/runs")
     public LeeResult listRuns(@RequestParam(required = false) String status,
@@ -73,8 +71,8 @@ public class AgentController {
         }
     }
 
-    /**
-     * 查询当前登录用户指定的 Agent 运行详情。
+/**
+     * 查询当前登录用户指定的 Agent run 详情。
      */
     @GetMapping("/runs/{runId}")
     public LeeResult getRunDetail(@PathVariable Long runId) {

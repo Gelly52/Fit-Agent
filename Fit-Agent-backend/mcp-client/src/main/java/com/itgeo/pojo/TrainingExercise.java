@@ -8,6 +8,9 @@ import lombok.ToString;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/**
+ * 训练日志下的动作明细实体。
+ */
 @Data
 @ToString
 @TableName("t_training_exercise")
@@ -21,8 +24,10 @@ public class TrainingExercise {
     private Integer reps;
     private BigDecimal weight;
     @TableField("order_num")
+    /** 动作排序号。 */
     private Integer orderNum;
     @TableField("estimated_muscle_group")
+    /** 估算肌群。 */
     private String estimatedMuscleGroup;
     @TableField("created_at")
     private LocalDateTime createdAt;

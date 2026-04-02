@@ -8,6 +8,9 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 身体指标相关接口。
+ */
 @Slf4j
 @RestController
 @RequestMapping("/body-metrics")
@@ -16,6 +19,12 @@ public class BodyMetricsController {
     @Resource
     private BodyMetricsService bodyMetricsService;
 
+    /**
+     * 记录当前登录用户的身体指标。
+     *
+     * @param request 身体指标请求体
+     * @return 通用响应结果
+     */
     @PostMapping("/log")
     public LeeResult logBodyMetrics(@RequestBody BodyMetricsLogRequest request) {
         try {
@@ -30,6 +39,12 @@ public class BodyMetricsController {
         }
     }
 
+    /**
+     * 查询当前登录用户最近的身体指标摘要。
+     *
+     * @param limit 返回条数，为空时使用服务默认值
+     * @return 通用响应结果
+     */
     @GetMapping("/recent")
     public LeeResult getRecentBodyMetrics(@RequestParam(required = false) Integer limit) {
         try {

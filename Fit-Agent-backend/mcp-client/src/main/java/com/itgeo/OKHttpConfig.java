@@ -8,11 +8,16 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import java.util.concurrent.TimeUnit;
 
 /**
- * OkHttp配置类，用来配置OkHttpClient的超时时间
+ * OkHttp 客户端配置。
  */
 @Configuration
 public class OKHttpConfig implements WebMvcConfigurer {
 
+    /**
+     * 创建统一的 OkHttpClient，设置基础连接与读取超时。
+     *
+     * @return OkHttp 客户端
+     */
     @Bean
     public OkHttpClient okHttpClient() {
         return new OkHttpClient.Builder()
@@ -20,6 +25,4 @@ public class OKHttpConfig implements WebMvcConfigurer {
                 .readTimeout(60, TimeUnit.SECONDS)
                 .build();
     }
-
-
 }

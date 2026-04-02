@@ -7,14 +7,19 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.Arrays;
 
+/**
+ * 跨域访问配置。
+ */
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
 
+    /** 允许跨域访问的来源配置，多个域名用逗号分隔。 */
     @Value("${website.domain}")
     private String domain;
 
     /**
-     * 配置跨域请求
+     * 为全站接口注册跨域规则。
+     *
      * @param registry 跨域注册器
      */
     @Override
@@ -24,11 +29,11 @@ public class CorsConfig implements WebMvcConfigurer {
                 .map(String::trim)
                 .toArray(String[]::new);
 
-        registry.addMapping("/**")        // 当前所有路径都支持跨域
-                .allowedOriginPatterns(allowedOrigins)             // 允许指定域名跨域调用
-                .allowedMethods("*")                // 允许所有HTTP方法跨域调用
-                .allowedHeaders("*")                // 允许所有请求头跨域调用
-                .allowCredentials(true)             // 允许携带认证信息跨域调用
+        registry.addMapping("/**")
+                .allowedOriginPatterns(allowedOrigins)
+                .allowedMethods("*")
+                .allowedHeaders("*")
+                .allowCredentials(true)
                 .maxAge(60 * 60);
     }
 }

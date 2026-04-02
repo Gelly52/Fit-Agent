@@ -9,6 +9,9 @@ import lombok.ToString;
 
 import java.time.LocalDateTime;
 
+/**
+ * 用户登录会话实体。
+ */
 @Data
 @ToString
 @TableName("t_user_login_session")
@@ -21,6 +24,7 @@ public class UserLoginSession {
     private Long userId;
 
     @TableField("refresh_token_hash")
+    /** 刷新令牌哈希。 */
     private String refreshTokenHash;
 
     @TableField("client_ip")
@@ -30,9 +34,11 @@ public class UserLoginSession {
     private String userAgent;
 
     @TableField("expired_at")
+    /** 会话过期时间。 */
     private LocalDateTime expiredAt;
 
     @TableField("revoked_at")
+    /** 会话撤销时间。 */
     private LocalDateTime revokedAt;
 
     @TableField("created_at")

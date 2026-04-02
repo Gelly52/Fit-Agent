@@ -55,6 +55,12 @@ public class ChatSessionServiceImpl implements ChatSessionService {
     @Resource
     private ChatMessageMapper chatMessageMapper;
 
+    /**
+     * 创建默认 agent 场景会话。
+     * <p>
+     * 该方法只是对 {@link #createSession(Long, String, String, String)} 的便捷封装，
+     * 不会在这里追加任何消息记录。
+     */
     @Override
     public ChatSession createAgentSession(Long userId, String firstMessage, String botMsgId) {
         return createSession(userId, DEFAULT_SCENE_TYPE, firstMessage, botMsgId);
@@ -151,6 +157,9 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         return existing != null;
     }
 
+    /**
+     * 查询当前用户最近更新的会话列表。
+     */
     @Override
     public List<ChatSession> listRecentSessions(Long userId, Integer limit) {
         // 1. userId 不能为空
@@ -170,6 +179,9 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         return sessions;
     }
 
+    /**
+     * 查询当前用户指定会话下的全部消息。
+     */
     @Override
     public List<ChatMessage> listMessagesBySessionId(Long userId, Long sessionId) {
         // 1.校验 userId
@@ -205,6 +217,13 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         return messages;
     }
 
+    /**
+     * 查询当前用户的聊天历史。
+     * <p>
+     * 支持两种模式：
+     * 1. 传 sessionId 时，只返回指定会话；
+     * 2. 不传 sessionId 时，返回最近若干会话及其消息。
+     */
     @Override
     public ChatRecordsResponse getChatRecords(Long userId, Long sessionId, Integer limit) {
         // 1. 校验 userId
@@ -265,6 +284,9 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         return response;
     }
 
+    /**
+     * 按 userId 与 sessionCode 查询会话。
+     */
     @Override
     public ChatSession findByUserIdAndSessionCode(Long userId, String sessionCode) {
         if (userId == null || StrUtil.isBlank(sessionCode)) {
@@ -279,6 +301,11 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         );
     }
 
+    /**
+     * 创建新的会话记录。
+     * <p>
+     * 说明：这里只写入会话元数据，不负责写用户消息或 assistant 消息。
+     */
     @Override
     public ChatSession createSession(Long userId, String sceneType, String firstMessage, String botMsgId) {
         // 1. 基础参数校验：创建会话时，用户、首条消息、botMsgId 都不能为空
@@ -307,26 +334,37 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         return session;
     }
 
+    /**
+     * 解析可用会话：优先复用，不满足条件时新建。
+     * <p>
+     * 说明：该方法只决定“返回哪个会话”，不会在内部追加任何消息记录。
+     */
     @Override
     public ChatSession resolveOrCreateSession(Long userId, String sessionCode, String sceneType, String firstMessage, String botMsgId) {
+        // 1. userId 是解析或创建会话的基础条件
         if (userId == null) {
             throw new IllegalArgumentException("userId不能为空");
         }
 
+        // 2. 调用方传了 sessionCode 时，优先尝试复用当前用户自己的会话
         if (StrUtil.isNotBlank(sessionCode)) {
             ChatSession existing = findByUserIdAndSessionCode(userId, sessionCode);
             if (existing != null) {
                 if (isSceneCompatible(sceneType, existing.getSceneType())) {
                     return existing;
                 }
-                // 模式不兼容：新建一个新会话
+                // 3. 找到旧会话但场景不兼容时，仅新建会话记录，不在这里写消息
                 return createSession(userId, sceneType, firstMessage, botMsgId);
             }
         }
 
+        // 4. 未传 sessionCode 或找不到可复用会话时，新建会话记录
         return createSession(userId, sceneType, firstMessage, botMsgId);
     }
 
+    /**
+     * 按会话ID与用户ID查询会话归属。
+     */
     @Override
     public ChatSession findByIdAndUserId(Long sessionId, Long userId) {
         if (sessionId == null || userId == null) {
@@ -340,6 +378,11 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         );
     }
 
+    /**
+     * 检查当前用户是否已经存在指定 botMsgId 的消息记录。
+     * <p>
+     * 该查询会先从消息表找 botMsgId，再反查这些消息所属会话是否属于当前用户。
+     */
     @Override
     public boolean existsByUserIdAndBotMsgId(Long userId, String botMsgId) {
         if (userId == null || StrUtil.isBlank(botMsgId)) {
@@ -440,6 +483,9 @@ public class ChatSessionServiceImpl implements ChatSessionService {
                 : normalized.substring(0, TITLE_MAX_LENGTH);
     }
 
+    /**
+     * 规范化历史查询条数上限。
+     */
     private int normalizeQueryLimit(Integer limit){
         if (limit == null || limit <= 0) {
             return DEFAULT_QUERY_LIMIT;
@@ -447,6 +493,9 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         return Math.min(limit, MAX_QUERY_LIMIT);
     }
 
+    /**
+     * 组装单个会话及其消息列表的前端响应结构。
+     */
     private ChatSessionRecordItem buildSessionRecordItem(ChatSession session, List<ChatMessage> messages){
         ChatSessionRecordItem item = new ChatSessionRecordItem();
         item.setSessionId(session.getId());
@@ -463,6 +512,9 @@ public class ChatSessionServiceImpl implements ChatSessionService {
         return item;
     }
 
+    /**
+     * 组装单条聊天消息的前端响应结构。
+     */
     private ChatRecordItem buildChatRecordItem(ChatSession session, ChatMessage message){
         ChatRecordItem item = new ChatRecordItem();
         item.setSessionId(session.getId());
@@ -482,11 +534,8 @@ public class ChatSessionServiceImpl implements ChatSessionService {
 
     /**
      * 规范化会话场景类型。
-     * 规则：
-     * - 如果未传 sceneType，则默认使用 chat；
-     * - 如果有值，则去掉首尾空格后返回。
-     * @param sceneType 原始场景类型
-     * @return 规范化后的场景类型
+     * <p>
+     * 当前只显式识别 agent；其余输入统一归一为 chat。
      */
     private String normalizeSessionSceneType(String sceneType) {
         if ("agent".equalsIgnoreCase(sceneType)) {
@@ -496,13 +545,11 @@ public class ChatSessionServiceImpl implements ChatSessionService {
     }
 
     /**
-     * 检查会话场景类型是否兼容。
+     * 检查请求场景与现有会话场景是否兼容。
+     * <p>
      * 规则：
-     * - 如果请求场景类型为 agent，则仅兼容 agent；
-     * - 如果请求场景类型为 chat，则兼容 chat。
-     * @param requestSceneType 请求场景类型
-     * @param existingSceneType 存在的场景类型
-     * @return 是否兼容
+     * 1. 请求归一为 agent 时，只兼容 agent 会话；
+     * 2. 其余请求统一按 chat 处理，只兼容 chat 会话。
      */
     private boolean isSceneCompatible(String requestSceneType, String existingSceneType) {
         String req = normalizeSessionSceneType(requestSceneType);

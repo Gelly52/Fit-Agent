@@ -22,6 +22,29 @@ spring:
       port: 9379
       password: your_redis_password
 
+rag:
+  embedding:
+    # 可选值：transformers-default / bge-m3-http
+    provider: ${RAG_EMBEDDING_PROVIDER:transformers-default}
+    service-url: ${RAG_EMBEDDING_SERVICE_URL:http://127.0.0.1:7086}
+    model-name: ${RAG_EMBEDDING_MODEL_NAME:bge-m3}
+    dimension: ${RAG_EMBEDDING_DIMENSION:1024}
+
+  vectorstore:
+    index-name: ${RAG_VECTORSTORE_INDEX_NAME:lee-vectorstore}
+    prefix: ${RAG_VECTORSTORE_PREFIX:embedding:}
+
+  chunking:
+    # 可选值：token / semantic
+    strategy: ${RAG_CHUNKING_STRATEGY:semantic}
+    merge-threshold: ${RAG_CHUNKING_MERGE_THRESHOLD:0.82}
+    breakpoint-drop-threshold: ${RAG_CHUNKING_BREAKPOINT_DROP_THRESHOLD:0.12}
+    max-chunk-sentence-count: ${RAG_CHUNKING_MAX_CHUNK_SENTENCE_COUNT:8}
+    max-chunk-chars: ${RAG_CHUNKING_MAX_CHUNK_CHARS:800}
+    sentence-embedding-batch-size: ${RAG_CHUNKING_SENTENCE_EMBEDDING_BATCH_SIZE:64}
+    paragraph-boundary-enabled: ${RAG_CHUNKING_PARAGRAPH_BOUNDARY_ENABLED:true}
+    debug-log-enabled: ${RAG_CHUNKING_DEBUG_LOG_ENABLED:false}
+
 logging:
   level:
     root: info

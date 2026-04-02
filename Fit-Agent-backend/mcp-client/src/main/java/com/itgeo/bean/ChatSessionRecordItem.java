@@ -19,12 +19,20 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 public class ChatSessionRecordItem {
+    /** 会话主键。 */
     private Long sessionId;
+    /** 前端会话编码。 */
     private String sessionCode;
+    /** 会话场景类型。 */
     private String sceneType;
+    /** 会话标题。 */
     private String title;
+    /** 最近一条机器人消息标识。 */
     private String lastBotMsgId;
+    /** 会话创建时间。 */
     private LocalDateTime createdAt;
+    /** 会话更新时间。 */
     private LocalDateTime updatedAt;
+    /** 当前会话消息列表。 */
     private List<ChatRecordItem> messages;
 }

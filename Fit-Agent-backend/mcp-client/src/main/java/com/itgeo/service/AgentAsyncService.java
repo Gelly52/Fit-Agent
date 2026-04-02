@@ -3,17 +3,17 @@ package com.itgeo.service;
 import com.itgeo.bean.AgentExecuteContext;
 
 /**
- * Agent 异步执行服务。
+ * Agent 异步执行服务契约。
  *
  * 职责：
- * 1. 在独立线程中推进 run / step 状态；
- * 2. 调用聊天能力生成最终结果；
- * 3. 回填 assistant 消息并释放并发锁。
+ * 1. 在后台推进 run / step 状态流转；
+ * 2. 协调 Agent 能力执行与运行态收尾；
+ * 3. 在必要时完成失败兜底与锁释放。
  */
 public interface AgentAsyncService {
 
-    /**
-     * 异步执行 Agent 工作流。
+/**
+     * 异步执行一次 Agent run，并完成运行态闭环。
      *
      * @param context Agent 执行上下文
      */

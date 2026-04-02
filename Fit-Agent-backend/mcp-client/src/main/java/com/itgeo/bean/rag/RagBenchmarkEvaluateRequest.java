@@ -1,4 +1,4 @@
-package com.itgeo.bean;
+package com.itgeo.bean.rag;
 
 
 import lombok.AllArgsConstructor;

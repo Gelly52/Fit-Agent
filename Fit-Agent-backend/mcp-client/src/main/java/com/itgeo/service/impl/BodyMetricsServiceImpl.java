@@ -14,6 +14,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * 身体指标服务实现，负责身体指标记录的写入与摘要查询。
+ */
 @Service
 @Transactional(rollbackFor = Exception.class)
 public class BodyMetricsServiceImpl implements BodyMetricsService {
@@ -21,9 +24,16 @@ public class BodyMetricsServiceImpl implements BodyMetricsService {
     @Resource
     private BodyMetricsMapper bodyMetricsMapper;
 
+    /**
+     * 记录身体指标。
+     * 处理流程：
+     * 1. 校验登录态与请求参数；
+     * 2. 解析记录日期并生成摘要；
+     * 3. 按用户和日期查询当天记录，存在则更新，否则新增。
+     */
     @Override
     public void logBodyMetrics(Long userId, BodyMetricsLogRequest request) {
-        // 1. 校验参数
+        // 先校验用户与请求内容，确保至少填写体重或体脂中的一项。
         if (userId == null) {
             throw new IllegalArgumentException("用户未登录");
         }
@@ -36,18 +46,18 @@ public class BodyMetricsServiceImpl implements BodyMetricsService {
         if (request.getWeight() == null && request.getBodyFat() == null) {
             throw new IllegalArgumentException("体重和体脂至少填写一项");
         }
-        // 2. 解析日期格式
+
+        // 解析记录日期并生成用于展示的身体指标摘要。
         LocalDate recordDate = LocalDate.parse(request.getDate());
-        // 3. 构建身体指标摘要
         String summary = buildBodyMetricsSummary(request);
-        // 4.查询当天是否已有记录
+
+        // 按“用户 + 日期”查找当天记录，存在则更新，不存在则插入新记录。
         BodyMetrics existing = bodyMetricsMapper.selectOne(
                 new LambdaQueryWrapper<BodyMetrics>()
                         .eq(BodyMetrics::getUserId, userId)
                         .eq(BodyMetrics::getRecordDate, recordDate)
                         .last("limit 1")
         );
-        // 5.如果存在记录，更新记录
         if (existing != null) {
             existing.setWeight(request.getWeight());
             existing.setBodyFat(request.getBodyFat());
@@ -57,7 +67,6 @@ public class BodyMetricsServiceImpl implements BodyMetricsService {
             existing.setSummary(summary);
             bodyMetricsMapper.updateById(existing);
         } else {
-            // 6.如果不存在记录，插入新记录
             BodyMetrics entity = new BodyMetrics();
             entity.setUserId(userId);
             entity.setRecordDate(recordDate);
@@ -72,22 +81,30 @@ public class BodyMetricsServiceImpl implements BodyMetricsService {
 
     }
 
+    /**
+     * 查询最近身体指标摘要。
+     * 处理流程：
+     * 1. 校验用户参数；
+     * 2. 规范查询条数并按日期倒序查询；
+     * 3. 转换为日期摘要列表返回。
+     */
     @Override
     public List<DateSummaryItem> getRecentBodyMetrics(Long userId, Integer limit) {
-        // 1.校验参数
+        // 校验用户参数。
         if (userId == null) {
             throw new IllegalArgumentException("用户未登录");
         }
-        // 2.处理limit
+
+        // 规范返回条数并查询最近记录。
         int safeLimit = (limit == null || limit <= 0) ? 5 : Math.min(limit, 20);
-        // 3.查询数据库
         List<BodyMetrics> records = bodyMetricsMapper.selectList(
                 new LambdaQueryWrapper<BodyMetrics>()
                         .eq(BodyMetrics::getUserId, userId)
                         .orderByDesc(BodyMetrics::getRecordDate)
                         .last("limit " + safeLimit)
         );
-        // 4.返回结果
+
+        // 转换为日期摘要列表返回。
         return records.stream()
                 .map(record -> new DateSummaryItem(
                         record.getRecordDate() == null ? null : record.getRecordDate().toString(),
@@ -95,7 +112,9 @@ public class BodyMetricsServiceImpl implements BodyMetricsService {
                 .collect(Collectors.toList());
     }
 
-    // 构建身体指标摘要
+    /**
+     * 根据请求字段拼接身体指标摘要。
+     */
     private String buildBodyMetricsSummary(BodyMetricsLogRequest request) {
         List<String> parts = new java.util.ArrayList<>();
 
@@ -119,7 +138,9 @@ public class BodyMetricsServiceImpl implements BodyMetricsService {
         return String.join("，", parts);
     }
 
-    // 处理空字符串
+    /**
+     * 将空白字符串归一化为 null。
+     */
     private String blankToNull(String value) {
         return (value == null || value.isBlank()) ? null : value.trim();
     }

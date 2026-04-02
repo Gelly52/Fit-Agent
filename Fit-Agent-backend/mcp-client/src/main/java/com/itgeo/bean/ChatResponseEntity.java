@@ -19,12 +19,20 @@ import lombok.ToString;
 @AllArgsConstructor
 @NoArgsConstructor
 public class ChatResponseEntity {
+    /** 最终回复全文。 */
     private String message;
+    /** 机器人消息标识。 */
     private String botMsgId;
+    /** Agent 运行主键，普通聊天场景可能为空。 */
     private Long runId;
+    /** 当前聊天会话主键。 */
     private Long chatSessionId;
+    /** 前端会话编码。 */
     private String sessionCode;
+    /** 当前轮来源类型。 */
     private String sourceType;
+    /** 来源信息集合。 */
     private Object sources;
+    /** 会话场景类型。 */
     private String sceneType;
 }

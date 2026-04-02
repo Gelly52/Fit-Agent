@@ -8,7 +8,7 @@ import lombok.ToString;
 import java.util.List;
 
 /**
- * SearXng搜索响应
+ * SearXng 搜索响应。
  */
 @Data
 @ToString
@@ -16,7 +16,9 @@ import java.util.List;
 @NoArgsConstructor
 public class SearXngResponse {
 
+    /** 原始查询词。 */
     private String query;
+    /** 搜索结果列表。 */
     private List<SearchResult> results;
 
 }

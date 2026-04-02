@@ -9,6 +9,9 @@ import lombok.ToString;
 
 import java.time.LocalDateTime;
 
+/**
+ * 用户基础信息实体。
+ */
 @Data
 @ToString
 @TableName("t_user")
@@ -18,16 +21,19 @@ public class User {
     private Long id;
 
     @TableField("user_key")
+    /** 对外稳定用户标识。 */
     private String userKey;
 
     private String username;
 
     @TableField("password_hash")
+    /** 密码哈希。 */
     private String passwordHash;
 
     private String nickname;
     private String email;
     private String phone;
+    /** 用户状态。 */
     private Integer status;
 
     @TableField("last_login_at")

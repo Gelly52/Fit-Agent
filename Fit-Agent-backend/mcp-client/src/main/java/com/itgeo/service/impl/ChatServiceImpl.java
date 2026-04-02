@@ -53,6 +53,15 @@ public class ChatServiceImpl implements ChatService {
         private Long assistantMessageId;
     }
 
+    /**
+     * 为一次正式聊天准备可落库的会话上下文。
+     * <p>
+     * 步骤：
+     * 1. 先按 userId + sessionCode 尝试复用会话，必要时新建会话；
+     * 2. 追加本轮用户消息，保证历史记录完整；
+     * 3. 创建 assistant 占位消息，供流式结束后统一回填；
+     * 4. 返回本轮调用所需的会话对象与占位消息ID。
+     */
     private PreparedChatContext prepareConversation(
             ChatEntity chatEntity,
             AuthenticatedUserContext authenticatedUser,
@@ -294,6 +303,14 @@ public class ChatServiceImpl implements ChatService {
                 .replace("{question}", question);
     }
 
+    /**
+     * 执行 Agent 场景下的纯模型问答。
+     * <p>
+     * 步骤：
+     * 1. 校验 Agent 链路传入的会话确实存在且属于当前用户；
+     * 2. 使用 Agent 专用提示词包装当前问题；
+     * 3. 发起流式调用，并把结果回填到既有 assistant 占位消息。
+     */
     public ChatResponseEntity doAgentChat(
             ChatEntity chatEntity,
             Long chatSessionId,
@@ -324,6 +341,14 @@ public class ChatServiceImpl implements ChatService {
         );
     }
 
+    /**
+     * 执行 Agent 场景下的联网增强问答。
+     * <p>
+     * 步骤：
+     * 1. 校验 Agent 会话归属；
+     * 2. 先执行联网搜索并组装增强提示词；
+     * 3. 将搜索来源一并透传给流式发送与最终回填逻辑。
+     */
     public ChatResponseEntity doAgentInternetSearch(
             ChatEntity chatEntity,
             Long chatSessionId,
@@ -355,6 +380,15 @@ public class ChatServiceImpl implements ChatService {
         );
     }
 
+    /**
+     * 根据增强开关分发普通聊天执行路径。
+     * <p>
+     * 当前正式主链路只支持单开增强：
+     * 1. 仅开 RAG 时，自动检索知识库后进入 RAG 问答；
+     * 2. 仅开联网时，进入联网增强问答；
+     * 3. 两者都关闭时，执行普通聊天；
+     * 4. 两者同时开启时直接拒绝，不走 hybrid 预留分支。
+     */
     @Override
     public ChatResponseEntity doChatWithEnhancers(ChatEntity chatEntity, AuthenticatedUserContext authenticatedUser) {
         {
@@ -374,6 +408,15 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
+    /**
+     * 根据增强开关分发 Agent 场景执行路径。
+     * <p>
+     * 当前正式主链路同样只支持单开增强：
+     * 1. 仅开 RAG 时，自动检索知识库后进入 Agent RAG 问答；
+     * 2. 仅开联网时，进入 Agent 联网增强问答；
+     * 3. 两者都关闭时，执行纯 Agent 问答；
+     * 4. 两者同时开启时直接拒绝，不走 hybrid 预留分支。
+     */
     @Override
     public ChatResponseEntity doAgentWithEnhancers(
             ChatEntity chatEntity,
@@ -417,6 +460,9 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
+    /**
+     * 适配无 runId 场景的流式发送入口。
+     */
     private ChatResponseEntity streamAndSend(Flux<String> stringFlux,
                                              AuthenticatedUserContext authenticatedUser,
                                              String botMsgId,
@@ -443,10 +489,11 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 消费模型返回的流式分片，并同步推送到 SSE。
      * <p>
-     * 说明：
-     * 1. ADD 事件负责实时增量输出；
-     * 2. FINISH 事件负责回传完整内容与会话元数据；
-     * 3. assistant 占位消息必须在这里统一回填最终内容。
+     * 处理步骤：
+     * 1. 逐片消费模型输出，并按 ADD 事件实时推送给前端；
+     * 2. 汇总完整回答后，回填 assistant 占位消息内容与来源；
+     * 3. 组装最终响应对象，补齐会话、运行与来源元数据；
+     * 4. 在连接可用时发送 FINISH 事件，通知前端本轮输出结束。
      */
     private ChatResponseEntity streamAndSend(Flux<String> stringFlux,
                                              AuthenticatedUserContext authenticatedUser,
@@ -546,6 +593,9 @@ public class ChatServiceImpl implements ChatService {
         }).collect(Collectors.toList());
     }
 
+    /**
+     * 校验 Agent 运行链路传入的会话是否存在且属于当前用户。
+     */
     private ChatSession requireExistingSession(Long chatSessionId, AuthenticatedUserContext authenticatedUser) {
         ChatSession session = chatSessionService.findByIdAndUserId(
                 chatSessionId,
@@ -581,6 +631,11 @@ public class ChatServiceImpl implements ChatService {
         return "chat";
     }
 
+    /**
+     * 为当前问题自动加载当前用户的 RAG 上下文。
+     * <p>
+     * 当前固定检索 4 条候选片段，供自动 RAG 分支复用。
+     */
     private List<Document> loadRagContext(ChatEntity chatEntity, AuthenticatedUserContext authenticatedUser) {
         return documentService.doSearch(
                 chatEntity.getMessage(),
@@ -589,6 +644,11 @@ public class ChatServiceImpl implements ChatService {
         );
     }
 
+    /**
+     * 自动 RAG 问答入口。
+     * <p>
+     * 先自动检索知识库片段，再复用手动 RAG 问答主流程执行回答。
+     */
     private ChatResponseEntity doChatRagSearchAuto(
             ChatEntity chatEntity,
             AuthenticatedUserContext authenticatedUser
@@ -597,6 +657,15 @@ public class ChatServiceImpl implements ChatService {
         return doChatRagSearch(chatEntity, ragContext, authenticatedUser);
     }
 
+    /**
+     * 执行 Agent 场景下的自动 RAG 问答。
+     * <p>
+     * 步骤：
+     * 1. 校验 Agent 会话归属；
+     * 2. 自动检索当前用户知识库片段；
+     * 3. 组装 RAG 提示词并发起流式调用；
+     * 4. 把知识库来源一并回填到 assistant 消息与 FINISH 响应中。
+     */
     private ChatResponseEntity doAgentRagSearch(
             ChatEntity chatEntity,
             Long chatSessionId,
@@ -635,6 +704,11 @@ public class ChatServiceImpl implements ChatService {
         );
     }
 
+    /**
+     * 预留的 chat hybrid 组合分支。
+     * <p>
+     * 当前未接入正式主链路；现阶段普通聊天在 RAG 与联网同时开启时会直接抛错。
+     */
     private ChatResponseEntity doChatRagInternetSearch(
             ChatEntity chatEntity,
             AuthenticatedUserContext authenticatedUser
@@ -670,6 +744,11 @@ public class ChatServiceImpl implements ChatService {
         );
     }
 
+    /**
+     * 预留的 agent hybrid 组合分支。
+     * <p>
+     * 当前未接入正式主链路；现阶段 Agent 执行在 RAG 与联网同时开启时会直接抛错。
+     */
     private ChatResponseEntity doAgentRagInternetSearch(
             ChatEntity chatEntity,
             AuthenticatedUserContext authenticatedUser
@@ -706,6 +785,11 @@ public class ChatServiceImpl implements ChatService {
     }
 
 
+    /**
+     * 预留的 hybrid 来源合并方法。
+     * <p>
+     * 当前仅供未接入主链路的组合分支复用，不代表正式聊天流程已经启用双增强合并。
+     */
     private Object mergeSources(Object ragSources, Object internetSources) {
         List<Object> merged = new java.util.ArrayList<>();
         if (ragSources instanceof java.util.List<?>) {
@@ -717,6 +801,11 @@ public class ChatServiceImpl implements ChatService {
         return merged;
     }
 
+    /**
+     * 预留的 hybrid 提示词组装方法。
+     * <p>
+     * 当前未接入正式主链路，仅为后续可能的知识库 + 联网组合能力保留。
+     */
     private String buildHybridPrompt(
             String question,
             List<Document> ragContext,

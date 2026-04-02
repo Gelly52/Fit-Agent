@@ -7,21 +7,24 @@ import org.aspectj.lang.annotation.Aspect;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StopWatch;
 
+/**
+ * 服务层耗时日志切面。
+ *
+ * 作用范围为 com.itgeo.service.impl 包及其子包，
+ * 用于统一记录服务方法执行耗时并按耗时长短输出不同级别日志。
+ */
 @Component
 @Slf4j
 @Aspect
 public class ServiceLogAspect {
 
-    /* AOP 环绕切面
-     *      * 返回任意类型
-     *      com.itgeo.service.impl 指定的包名，要切的class类的所在包
-     *      .. 可以匹配到当前包和子包中的类
-     *      * 匹配当钱包以及子包下的class类
-     *      . 无意义
-     *      * 匹配任意方法名
-     *      (..) 方法的参数，匹配任意参数
-     * 记录服务方法执行时间
-     * */
+    /**
+     * 统计服务方法执行耗时并输出日志。
+     *
+     * @param joinPoint 当前切点
+     * @return 原方法执行结果
+     * @throws Throwable 原方法抛出的异常
+     */
     @Around("execution(* com.itgeo.service.impl..*.*(..))")
     public Object recordTimeLog(ProceedingJoinPoint joinPoint) throws Throwable {
 //        long begin = System.currentTimeMillis();

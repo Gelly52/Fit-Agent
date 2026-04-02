@@ -20,9 +20,9 @@ import java.util.concurrent.ThreadPoolExecutor;
 public class AgentAsyncConfig {
 
     /**
-     * Agent 异步执行线程池。
+     * 创建 Agent 异步任务执行器。
      *
-     * @return 线程池执行器
+     * @return Agent 异步线程池执行器
      */
     @Bean("agentTaskExecutor")
     public ThreadPoolTaskExecutor agentTaskExecutor() {

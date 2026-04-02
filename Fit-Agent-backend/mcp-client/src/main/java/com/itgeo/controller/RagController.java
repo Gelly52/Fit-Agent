@@ -4,7 +4,7 @@ import com.itgeo.auth.AuthenticatedUserContext;
 import com.itgeo.auth.UserContextHolder;
 import com.itgeo.bean.ChatEntity;
 import com.itgeo.bean.ChatResponseEntity;
-import com.itgeo.bean.RagBenchmarkEvaluateRequest;
+import com.itgeo.bean.rag.RagBenchmarkEvaluateRequest;
 import com.itgeo.service.ChatService;
 import com.itgeo.service.DocumentService;
 import com.itgeo.service.RagBenchmarkService;
@@ -25,10 +25,9 @@ import java.util.List;
 
 /**
  * 手动 RAG 文档上传与检索控制器。
- *
- * 说明：
- * 1. 当前仅开放手动上传、手动检索、手动带上下文问答；
- * 2. Phase 1 不会自动把 RAG 接入 /chat/doChat 或 /agent/execute。
+ * <p>
+ * 提供手动上传文档、手动检索片段、手动触发带 RAG 上下文的问答等入口。
+ * `/rag/search` 仅作为手动入口使用：控制器会先检索文档片段，再显式调用聊天服务完成回答。
  */
 @Slf4j
 @RestController
@@ -45,7 +44,7 @@ public class RagController {
     private RagBenchmarkService ragBenchmarkService;
 
     /**
-     * 上传用户自己的 RAG 文档。
+     * 上传当前用户自己的 RAG 文档。
      */
     @PostMapping("/uploadRagDoc")
     public LeeResult uploadRagDoc(@RequestParam("file") MultipartFile file) {
@@ -69,15 +68,25 @@ public class RagController {
 
     /**
      * 手动 RAG 问答入口。
+     * <p>
+     * 步骤：
+     * 1. 先按当前问题手动检索知识库片段；
+     * 2. 再把检索结果显式传给聊天服务生成回答；
+     * 3. 该入口不会自动改写其他聊天接口的执行路径。
      */
     @PostMapping("/search")
     public LeeResult search(@RequestBody ChatEntity chatEntity, HttpServletResponse response) {
+        // 1. 获取当前登录用户，用于限定检索范围
         AuthenticatedUserContext authenticatedUser = UserContextHolder.getRequired();
+
+        // 2. 先手动检索当前用户知识库中的相关片段
         List<Document> documents = documentService.doSearch(
                 chatEntity.getMessage(),
                 authenticatedUser.getUserId(),
                 4
         );
+
+        // 3. 再把手动检索出的上下文显式交给聊天服务生成回答
         response.setCharacterEncoding("UTF-8");
         chatEntity.setCurrentUserName(authenticatedUser.getUserKey());
         ChatResponseEntity result = chatService.doChatRagSearch(
@@ -93,10 +102,10 @@ public class RagController {
      */
     @GetMapping("/docs")
     public LeeResult getUploadedDocs() {
-        // 1.获取当前用户：
+        // 1. 获取当前登录用户
         Long userId = UserContextHolder.getRequired().getUserId();
 
-        // 2.调用 service：
+        // 2. 返回当前用户已上传文档列表
         return LeeResult.ok(documentService.listUserDocuments(userId));
     }
 
@@ -116,6 +125,9 @@ public class RagController {
         return LeeResult.ok(documentService.getRagConfig());
     }
 
+    /**
+     * 执行 RAG benchmark 评测。
+     */
     @PostMapping("/benchmark/evaluate")
     public LeeResult benchmarkEvaluate(@RequestBody RagBenchmarkEvaluateRequest request) {
         try {

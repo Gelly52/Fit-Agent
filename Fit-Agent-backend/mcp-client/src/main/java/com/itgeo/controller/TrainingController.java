@@ -8,6 +8,9 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 训练日志相关接口。
+ */
 @Slf4j
 @RestController
 @RequestMapping("/training")
@@ -16,6 +19,12 @@ public class TrainingController {
     @Resource
     private TrainingService trainingService;
 
+    /**
+     * 记录当前登录用户的训练日志。
+     *
+     * @param request 训练日志请求体
+     * @return 通用响应结果
+     */
     @PostMapping("/log")
     public LeeResult logTraining(@RequestBody TrainingLogRequest request) {
         try {
@@ -30,6 +39,12 @@ public class TrainingController {
         }
     }
 
+    /**
+     * 查询当前登录用户最近的训练摘要。
+     *
+     * @param limit 返回条数，为空时使用服务默认值
+     * @return 通用响应结果
+     */
     @GetMapping("/recent")
     public LeeResult getRecentTraining(@RequestParam(required = false) Integer limit) {
         try {

@@ -1,7 +1,7 @@
 package com.itgeo.service.impl;
 
 import cn.hutool.json.JSONUtil;
-import com.itgeo.bean.*;
+import com.itgeo.bean.rag.*;
 import com.itgeo.mapper.RagBenchmarkRunMapper;
 import com.itgeo.pojo.RagBenchmarkRun;
 import com.itgeo.service.DocumentService;
@@ -13,6 +13,12 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 
+/**
+ * RAG benchmark 服务实现。
+ *
+ * 当前评测聚焦“文件级检索命中”：判断目标文件是否出现在 topK 召回文件列表中，
+ * 不评估 chunk recall、NDCG、答案质量或 LLM 裁判结果。
+ */
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -28,6 +34,9 @@ public class RagBenchmarkServiceImpl implements RagBenchmarkService {
     private final DocumentService documentService;
     private final RagBenchmarkRunMapper ragBenchmarkRunMapper;
 
+    /**
+     * 执行当前用户的 RAG benchmark 评测。
+     */
     @Override
     public RagBenchmarkEvaluateResponse evaluate(Long userId, RagBenchmarkEvaluateRequest request) {
 
@@ -57,18 +66,34 @@ public class RagBenchmarkServiceImpl implements RagBenchmarkService {
             List<RagBenchmarkQuestionResultResponse> results = new ArrayList<>();
             int hitCount = 0;
 
+            /*
+             * 评测步骤：
+             * 1. 逐题调用 `documentService.doSearch(...)`，拿到当前用户范围内的 topK 检索结果；
+             * 2. 从结果中同时提取 chunk 级文件名列表与去重后的文件级列表；
+             * 3. 用文件级列表判断目标文件是否命中，并计算首个命中文件排名等统计项；
+             * 4. 汇总单题结果后，再生成整次 benchmark 的总体指标与持久化快照。
+             */
+
             for (int i = 0; i < request.getQuestions().size(); i++) {
                 RagBenchmarkQuestionRequest item = request.getQuestions().get(i);
                 String expectedFileName = item.getExpectedFileName().trim();
 
-                List<Document> documents = documentService.doSearch(
+                RagSearchResult searchResult = documentService.doSearchWithTrace(
                         item.getQuestion(),
                         userId,
                         effectiveTopK
                 );
+                List<Document> documents = searchResult.getFinalDocuments();
                 List<String> chunkFileNames = extractChunkFileNames(documents);
                 List<String> retrievedFileNames = extractRetrievedFileNames(documents);
 
+
+                /*
+                 * 命中语义说明：
+                 * 1. `chunkFileNames` 保留原始返回顺序，主要用于观察 chunk 级重复情况；
+                 * 2. `retrievedFileNames` 是去重后的文件列表，代表“本题实际召回了哪些文件”；
+                 * 3. `hit`、`top1Hit`、`hitRate` 的核心判断都基于文件级列表，而不是 chunk recall、NDCG 或答案质量。
+                 */
                 Integer firstHitChunkRank = findRank(chunkFileNames, expectedFileName);
                 Integer firstHitFileRank = findRank(retrievedFileNames, expectedFileName);
 
@@ -111,6 +136,13 @@ public class RagBenchmarkServiceImpl implements RagBenchmarkService {
                 questionResult.setTop1FileName(top1FileName);
                 results.add(questionResult);
             }
+
+            /*
+             * 总体指标说明：
+             * 1. `hitCount` / `hitRate` 表示“题目对应目标文件是否被召回”的文件级命中统计；
+             * 2. 它们不表示 chunk 级召回率，也不代表答案正确率；
+             * 3. `top1HitRate`、`mrr`、`avgFirstHitFileRank` 是在文件级命中语义上的补充观测指标。
+             */
 
             RagBenchmarkEvaluateResponse response = new RagBenchmarkEvaluateResponse();
             response.setRunId(run.getId());
@@ -206,6 +238,15 @@ public class RagBenchmarkServiceImpl implements RagBenchmarkService {
         snapshot.put("filterScanLimit", ragConfig.getFilterScanLimit());
         snapshot.put("userIsolationEnabled", ragConfig.getUserIsolationEnabled());
         snapshot.put("isolationStrategy", ragConfig.getIsolationStrategy());
+
+        snapshot.put("chunkingStrategy", ragConfig.getChunkingStrategy());
+        snapshot.put("mergeThreshold", ragConfig.getMergeThreshold());
+        snapshot.put("breakpointDropThreshold", ragConfig.getBreakpointDropThreshold());
+        snapshot.put("maxChunkSentenceCount", ragConfig.getMaxChunkSentenceCount());
+        snapshot.put("maxChunkChars", ragConfig.getMaxChunkChars());
+        snapshot.put("paragraphBoundaryEnabled", ragConfig.getParagraphBoundaryEnabled());
+        snapshot.put("sentenceEmbeddingBatchSize", ragConfig.getSentenceEmbeddingBatchSize());
+        snapshot.put("debugLogEnabled", ragConfig.getDebugLogEnabled());
         return snapshot;
     }
 

@@ -25,19 +25,19 @@ import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Agent 任务受理服务实现。
+ * Agent 短事务受理服务实现。
  *
  * 职责：
- * 1. 校验 /agent/execute 请求参数；
- * 2. 做 userId + botMsgId 幂等判断；
- * 3. 做同一登录会话的并发锁控制；
- * 4. 在事务内创建会话、消息、run、step；
- * 5. 在事务提交后派发异步执行。
+ * 1. 在同步短事务内完成 /agent/execute 的参数校验与受理建档；
+ * 2. 基于 userId + botMsgId 做幂等判断，避免重复创建 run；
+ * 3. 以当前登录 sessionId 为维度做并发锁控制，限制同一登录会话并发执行；
+ * 4. 在事务内创建或复用会话、补写消息占位、创建 run 与固定 step；
+ * 5. 通过 afterCommit 在事务提交后派发异步执行链路。
  *
  * 说明：
- * - 这里只负责“短事务受理”，不负责真正的大模型调用；
- * - 真正执行工作流的逻辑在 AgentAsyncService 中完成；
- * - 同步阶段一旦异常，需要释放本次 Redis 锁，避免产生假占用。
+ * - 本类只负责“受理”阶段，不负责模型调用、流式输出或运行态推进；
+ * - 这里使用的锁维度是登录 sessionId，不是 chatSessionId；
+ * - 同步受理阶段若抛异常，需要及时释放本次已获取的 Redis 锁，避免假占用。
  */
 @Slf4j
 @Service
@@ -71,8 +71,16 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
-    /**
+/**
      * 受理一条 Agent 执行请求，并在事务提交后异步派发执行。
+     * <p>
+     * 受理步骤：
+     * 1. 校验登录态、请求体和 SSE 通道是否满足受理前置条件；
+     * 2. 先按 userId + botMsgId 查询既有 run，命中时直接返回幂等 ack；
+     * 3. 在短事务内创建或复用 agent 会话，写入用户消息、assistant 占位消息、run 主记录和固定 step；
+     * 4. 以登录 sessionId 为粒度申请并发锁，避免同一登录会话并发跑多个 Agent 任务；
+     * 5. 组装异步执行上下文，并在 afterCommit 中派发到异步线程；
+     * 6. 如果同步受理阶段发生异常，负责释放已获取的锁并交由事务整体回滚。
      *
      * @param authenticatedUser 当前登录用户上下文
      * @param chatEntity 聊天请求体
@@ -94,7 +102,7 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
         // 当前阶段后端用户身份只认 token，对 currentUserName 做覆盖，避免信任前端传值。
         chatEntity.setCurrentUserName(authenticatedUser.getUserKey());
 
-        // 1. 先做数据库幂等检查：已存在则直接返回已有 run 信息。
+        // 步骤1：先做数据库幂等检查；如果同一 userId + botMsgId 已受理，直接返回已有 ack。
         AgentRun existing = agentRunService.findByUserIdAndBotMsgId(userId, botMsgId);
         if (existing != null) {
             ChatSession existingSession = chatSessionService.findByIdAndUserId(
@@ -117,7 +125,7 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
         String lockOwner = null;
         boolean lockAcquired = false;
         try {
-            // 2. 先创建会话、消息、run；如果后面锁获取失败，事务会整体回滚
+            // 步骤2：在短事务内完成会话、消息、run、step 建档；若后续加锁失败，整笔受理事务回滚。
             ChatSession session = chatSessionService.resolveOrCreateSession(
                     userId,
                     chatEntity.getSessionCode(),
@@ -140,7 +148,7 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
             );
             agentRunService.initSteps(runId, chatEntity);
 
-            // 3. 同一登录 session 同时只允许一个 running agent。
+            // 步骤3：按当前登录 sessionId 维度申请并发锁；限制的是登录会话并发，不是 chatSessionId。
             lockOwner = String.valueOf(runId);
             Boolean locked = stringRedisTemplate.opsForValue().setIfAbsent(
                     lockKey,
@@ -155,7 +163,7 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
 
             chatEntity.setSessionCode(session.getSessionCode());
 
-            // 5. 组装异步执行上下文。
+            // 步骤4：组装异步执行上下文，把受理阶段产出的 run / session / 锁信息显式传给异步线程。
             AgentExecuteContext context = new AgentExecuteContext(
                     runId,
                     session.getId(),
@@ -171,7 +179,7 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
             final String dispatchedLockKey = lockKey;
             final String dispatchedLockOwner = lockOwner;
 
-            // 6. 必须在事务提交后再派发异步任务，避免异步线程读到未提交数据。
+            // 步骤5：通过 afterCommit 在事务提交后派发，避免异步线程读到未提交数据。
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
@@ -199,7 +207,7 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
                     false
             );
         } catch (RuntimeException e) {
-            // 同步受理阶段异常时，必须立刻释放锁，避免本次事务回滚后仍占用锁。
+            // 步骤6：同步受理阶段一旦异常，立即释放已获取的登录 sessionId 维度锁，避免事务回滚后遗留假占用。
             if (lockAcquired) {
                 releaseLock(lockKey, lockOwner);
             }
@@ -225,15 +233,16 @@ public class AgentExecuteServiceImpl implements AgentExecuteService {
         }
     }
 
-    /**
-     * 构造 session 级别的并发锁 key。
+/**
+     * 基于当前登录 sessionId 构造并发锁 key。
+     * 说明：这里的锁粒度是登录态 sessionId，不是 chatSessionId。
      */
     private String buildLockKey(Long sessionId) {
         return AGENT_LOCK_KEY_PREFIX + sessionId;
     }
 
-    /**
-     * 仅当当前 owner 匹配时才释放 Redis 并发锁
+/**
+     * 仅当 owner 匹配时释放登录 sessionId 维度的 Redis 并发锁。
      */
     private void releaseLock(String lockKey, String lockOwner) {
         if (StrUtil.isBlank(lockKey) || StrUtil.isBlank(lockOwner)) {

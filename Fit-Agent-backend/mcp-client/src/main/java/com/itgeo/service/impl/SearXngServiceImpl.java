@@ -18,6 +18,11 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+/**
+ * SearXng 联网搜索服务实现。
+ * <p>
+ * 负责组装搜索请求、解析 JSON 响应，并在本地对结果做排序与数量裁剪。
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -30,10 +35,24 @@ public class SearXngServiceImpl implements SearXngService {
 
     private final OkHttpClient okHttpClient;
 
+    /**
+     * 调用 SearXng 执行一次联网搜索。
+     * <p>
+     * 步骤：
+     * 1. 构建只包含 `q` 与 `format=json` 的请求地址；
+     * 2. 发起 HTTP 请求并校验响应状态；
+     * 3. 解析响应体为 `SearXngResponse`；
+     * 4. 对结果做本地排序与数量裁剪后返回。
+     * <p>
+     * 说明：
+     * - 当前请求 URL 并未启用注释掉的 `count` 参数；
+     * - HTTP 非 2xx 或 IO 异常会抛出异常；
+     * - 只有响应体为空时，才会记录日志并返回空列表。
+     */
     @Override
     public List<SearchResult> search(String query) {
 
-        // 构建SearXng搜索URL
+        // 1. 构建 SearXng 搜索 URL：当前实际只传 q 与 format=json
         HttpUrl url = HttpUrl.get(SEARXNG_URL)
                 .newBuilder()
                 .addQueryParameter("q", query)
@@ -42,28 +61,27 @@ public class SearXngServiceImpl implements SearXngService {
                 .build();
         log.info("搜索的SearXng url地址为: {}", url.url());
 
-        // 构建SearXng搜索请求
+        // 2. 构建 HTTP 请求对象
         Request request = new Request.Builder()
                 .url(url)
                 .build();
 
-        //发送请求
+        // 3. 发起请求：非 2xx 直接抛异常；响应体存在时继续解析
         try (Response response = okHttpClient.newCall(request).execute()) {
-            // 解析响应体, 判断响应是否成功
             if (!response.isSuccessful()) {
                 throw new IOException("SearXng搜索请求失败: " + response.code());
             }
 
-            // 获得响应体数据
             if (response.body() != null) {
                 String responseBody = response.body().string();
                 log.info("<UNK>SearXng <UNK>: {}", responseBody);
-                // 解析响应体, 转换为SearXngResponse对象
-                SearXngResponse searXngResponse = JSONUtil.toBean(responseBody, SearXngResponse.class);
-                // 处理SearXng搜索结果, 截取限制的个数
 
+                // 4. 解析响应并交给本地结果整理逻辑处理
+                SearXngResponse searXngResponse = JSONUtil.toBean(responseBody, SearXngResponse.class);
                 return dealResults(searXngResponse.getResults());
             }
+
+            // 5. 仅在响应体缺失时回落为空列表
             log.error("搜索失败：{}", response.message());
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -73,10 +91,10 @@ public class SearXngServiceImpl implements SearXngService {
 
 
     /**
-     * 处理SearXng搜索结果, 截取限制的个数
-     *
-     * @param results
-     * @return
+     * 对 SearXng 返回结果做本地排序与数量裁剪。
+     * <p>
+     * 说明：这里使用配置项 `SEARXNG_COUNTS` 控制最终返回条数，
+     * 属于本地后处理逻辑，不代表请求 URL 已携带 `count` 参数。
      */
     private List<SearchResult> dealResults(List<SearchResult> results) {
 

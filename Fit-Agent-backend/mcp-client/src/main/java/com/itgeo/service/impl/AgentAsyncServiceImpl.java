@@ -28,16 +28,17 @@ import java.util.stream.Collectors;
 /**
  * Agent 异步工作流执行服务实现。
  *
- * 当前阶段职责：
- * 1. 推进固定 5 个步骤的状态流转；
- * 2. 调用聊天能力执行普通问答或联网问答；
- * 3. 成功时回填 assistant 占位消息；
- * 4. 失败时标记 run / step 失败并尽量回填失败消息；
- * 5. 最终释放 Redis 并发锁。
+ * 职责：
+ * 1. 在独立线程中推进 run / step 的固定五步状态流转；
+ * 2. 在第 3 步按请求中的增强开关分发 Agent 聊天能力；
+ * 3. 在成功路径上汇总运行结果快照，并把结果写回 run / step；
+ * 4. 在失败路径上补齐 run / step 失败状态，并在必要时发送失败兜底 FINISH；
+ * 5. 负责登录 sessionId 并发锁的续期与最终释放。
  *
  * 说明：
- * - 这里禁止再使用 UserContextHolder，必须只依赖 AgentExecuteContext 中显式传入的用户上下文；
- * - 当前 Phase 1 先不接入 RAG 自动检索与自然语言写库能力。
+ * - 成功路径的 assistant 占位消息回填与成功 FINISH 发送由 ChatServiceImpl.streamAndSend 负责；
+ * - 本类不重复回填成功消息，只做运行态状态闭环、结果快照落库和失败兜底；
+ * - 这里只依赖 AgentExecuteContext 中显式传入的用户上下文，不再使用 UserContextHolder。
  */
 @Service
 @Slf4j
@@ -90,8 +91,16 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
-    /**
-     * 异步推进 Agent 工作流。
+/**
+     * 在异步线程中推进一次 Agent run 的运行态闭环。
+     * <p>
+     * 执行步骤：
+     * 1. 启动登录 sessionId 维度锁的续期任务，避免长任务执行时锁过期；
+     * 2. 依次推进固定五个 step 的 running / success / failed 状态；
+     * 3. 在第 3 步按增强开关分发 Agent 聊天能力；
+     * 4. 在成功路径上生成运行结果快照，并完成 run / step 的最终落库；
+     * 5. 在失败路径上仅在聊天链路尚未结束时补发失败兜底 FINISH；
+     * 6. 最终停止续期任务并释放锁。
      *
      * @param context Agent 执行上下文
      */
@@ -103,6 +112,7 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
 
         ScheduledExecutorService renewExecutor = null;
         ScheduledFuture<?> renewFuture = null;
+        // 运行期间持续续期登录 sessionId 维度的 Redis 锁，避免长任务执行时锁提前过期。
         if (StrUtil.isNotBlank(context.getLockKey()) && StrUtil.isNotBlank(context.getLockOwner())) {
             renewExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread thread = new Thread(r, "agent-lock-renew-" + context.getRunId());
@@ -156,6 +166,7 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
             pushStepEvent(context, 3, resolveStepName(3), "running", "开始执行核心能力");
 
             ChatResponseEntity response = executeCoreAbility(context);
+            // 第3步成功返回时，assistant 占位消息回填与成功 FINISH 已由 ChatServiceImpl.streamAndSend 完成；这里仅继续推进运行态状态。
             finishEventAlreadySent = true;
 
             agentRunService.markStepSuccess(context.getRunId(), 3, "{\"status\":\"ok\"}");
@@ -169,13 +180,15 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
             agentRunService.markStepSuccess(context.getRunId(), 4, JSONUtil.toJsonStr(finish));
             pushStepEvent(context, 4, resolveStepName(4), "success", "结果整理完成");
 
+            // 步骤5：这里只做运行态收尾与状态闭环，确认 run / step 已完整落库，不在这里重复发送成功 FINISH。
+
             currentStepNo = 5;
             agentRunService.markStepRunning(context.getRunId(), 5, "{\"phase\":\"finish\"}");
             pushStepEvent(context, 5, resolveStepName(5), "running", "开始回填最终结果");
             agentRunService.markStepSuccess(context.getRunId(), 5, "{\"status\":\"ok\"}");
             pushStepEvent(context, 5, resolveStepName(5), "success", "任务回传完成");
 
-            // 5. 将最终 finish 结构落到 run 主记录中，便于后续查询与审计。
+            // 将最终 finish 快照写回 run 主记录，供运行查询、审计和失败补偿判断复用。
             agentRunService.markRunSuccess(context.getRunId(), JSONUtil.toJsonStr(finish));
         } catch (Exception e) {
             log.error("Agent异步执行失败, runId={}", context.getRunId(), e);
@@ -187,7 +200,7 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
             }
             agentRunService.markRunFailed(context.getRunId(), failedMessage);
 
-            // 只有当聊天链路尚未发出 FINISH 时，才补发失败 FINISH，避免用户收到双重结束事件。
+            // 仅当聊天链路尚未发出 FINISH 时，才补发失败兜底 FINISH，避免用户收到双重结束事件。
             if (!finishEventAlreadySent) {
                 try {
                     chatSessionService.finishAssistantMessage(
@@ -220,12 +233,13 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
         }
     }
 
-    /**
-     * 执行核心能力。
+/**
+     * 按请求中的增强开关分发 Agent 场景能力。
      *
-     * 当前 Phase 1 规则：
-     * - 包含“联网/搜索”等关键词时走联网问答；
-     * - 其他场景默认走普通问答。
+     * 说明：
+     * - 统一复用 ChatService 的 doAgentWithEnhancers 分发逻辑；
+     * - 是否走普通问答、知识库增强或联网增强，由请求中的开关决定；
+     * - 成功路径的 assistant 占位消息回填和成功 FINISH 发送由 ChatServiceImpl.streamAndSend 完成。
      */
     private ChatResponseEntity executeCoreAbility(AgentExecuteContext context) {
         return chatService.doAgentWithEnhancers(
@@ -236,26 +250,9 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
                 context.getAuthenticatedUser()
         );
     }
-//    private ChatResponseEntity executeCoreAbility(AgentExecuteContext context) {
-//        String message = context.getChatEntity().getMessage();
-//        if (message != null && (message.contains("联网") || message.contains("搜索"))) {
-//            return chatService.doAgentInternetSearch(
-//                    context.getChatEntity(),
-//                    context.getChatSessionId(),
-//                    context.getAssistantMessageId(),
-//                    context.getAuthenticatedUser()
-//            );
-//        }
-//        return chatService.doAgentChat(
-//                context.getChatEntity(),
-//                context.getChatSessionId(),
-//                context.getAssistantMessageId(),
-//                context.getAuthenticatedUser()
-//        );
-//    }
 
-    /**
-     * 将聊天返回结果转换为 AgentFinishResponse，便于 run 结果落库。
+/**
+     * 将聊天返回结果整理为 run 结果快照，供成功落库与失败兜底结构复用。
      */
     private AgentFinishResponse buildSuccessFinishResponse(AgentExecuteContext context, ChatResponseEntity response) {
         if (response == null) {
@@ -311,6 +308,9 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
         );
     }
 
+/**
+     * 仅在 owner 仍归属当前 run 时为登录 sessionId 维度锁续期。
+     */
     private boolean renewLock(String lockKey, String lockOwner, long ttlSeconds) {
         if (StrUtil.isBlank(lockKey) || StrUtil.isBlank(lockOwner)) {
             return false;
@@ -324,8 +324,8 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
         return result != null && result > 0;
     }
 
-    /**
-     * 只有owner匹配时才释放 Redis 并发锁。
+/**
+     * 仅当 owner 匹配时释放登录 sessionId 维度的 Redis 并发锁。
      */
     private void releaseLock(String lockKey, String lockOwner) {
         if (StrUtil.isBlank(lockKey) || StrUtil.isBlank(lockOwner)) {
@@ -338,6 +338,10 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
         );
     }
 
+    /**
+     * 停止锁续期任务并关闭调度线程。
+     */
+
     private void stopRenewTask(ScheduledFuture<?> renewFuture, ScheduledExecutorService renewExecutor) {
         if (renewFuture != null) {
             renewFuture.cancel(true);
@@ -347,7 +351,9 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
         }
     }
 
-    //RAG：
+    /**
+     * 将 RAG 文档来源转换为统一的 sources 结构。
+     */
     private Object buildRagSources(List<Document> ragContext) {
         if (ragContext == null) {
             return List.of();
@@ -362,7 +368,9 @@ public class AgentAsyncServiceImpl implements AgentAsyncService {
         }).collect(Collectors.toList());
     }
 
-    //联网：
+    /**
+     * 将联网搜索结果转换为统一的 sources 结构。
+     */
     private Object buildInternetSources(List<SearchResult> searchResults) {
         if (searchResults == null) {
             return List.of();

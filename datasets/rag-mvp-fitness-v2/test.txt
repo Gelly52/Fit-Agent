@@ -1,0 +1,62 @@
+window.doctorApi
+       .benchmarkEvaluate({
+         datasetName: "fitness_mvp_v2_full_topk4",
+         topK: 4,
+         questions: [
+           { question: "成年人每周至少需要多少中等强度有氧活动？", expectedFileName: "01_activity_targets_for_adults.txt" },
+           { question: "成年人每周至少几天做肌肉强化活动？", expectedFileName: "01_activity_targets_for_adults.txt" },
+           { question: "高温天气训练时，最重要的补水与降温原则是什么？", expectedFileName: "02_hot_weather_hydration_safety.txt" },
+           { question: "运动中头晕、虚弱、恶心和明显异常疲劳，是否提示热相关风险？", expectedFileName: "02_hot_weather_hydration_safety.txt" },
+           { question: "经常训练的人每天蛋白质大约每公斤体重应吃多少？", expectedFileName: "03_protein_intake_for_training.txt" },
+           { question: "蛋白质分散到几餐摄入通常更有利于恢复？", expectedFileName: "03_protein_intake_for_training.txt" },
+           { question: "训练前多久吃东西通常比较合适？", expectedFileName: "04_workout_fueling_and_carb_timing.txt" },
+           { question: "长时间训练时，每小时补多少碳水更常见？", expectedFileName: "04_workout_fueling_and_carb_timing.txt" },
+           { question: "同一肌群的力量训练之间通常应间隔多久恢复？", expectedFileName: "05_strength_training_recovery_planning.txt" },
+           { question: "新手开始力量训练时，一周做几次通常更稳妥？", expectedFileName: "05_strength_training_recovery_planning.txt" },
+           { question: "训练过量最常见的预警信号有哪些？", expectedFileName: "06_overtraining_and_excess_fatigue_signs.txt" },
+           { question: "如果训练表现持续下降、睡眠变差、一直很累，是否可能训练过量？", expectedFileName: "06_overtraining_and_excess_fatigue_signs.txt" },
+           { question: "训练前热身一般建议做多久？", expectedFileName: "07_warmup_and_cooldown_basics.txt" },
+           { question: "热身时更适合做动态动作还是长时间静态拉伸？", expectedFileName: "07_warmup_and_cooldown_basics.txt" },
+           { question: "减脂最核心的底层原则是不是热量缺口？", expectedFileName: "08_fat_loss_and_calorie_deficit_basics.txt" },
+           { question: "为什么不建议用特别极端的方式快速减重？", expectedFileName: "08_fat_loss_and_calorie_deficit_basics.txt" },
+           { question: "多数成年人为了恢复和健康，通常至少应睡多久？", expectedFileName: "09_sleep_and_recovery_basics.txt" },
+           { question: "睡眠不足会对训练表现和恢复产生哪些影响？", expectedFileName: "09_sleep_and_recovery_basics.txt" },
+           { question: "肌酸一水合物最常见的日常补充剂量是多少？", expectedFileName: "10_creatine_monohydrate_basics.txt" },
+           { question: "使用肌酸时，一定要先做加载吗？", expectedFileName: "10_creatine_monohydrate_basics.txt" }
+         ]
+       })
+       .then(res => {
+         const r = res?.data?.data ?? res?.data ?? res;
+         console.log("benchmark raw =", r);
+
+         console.table(
+           r.results.map(x => ({
+             idx: x.index,
+             hit: x.hit,
+             top1Hit: x.top1Hit,
+             expected: x.expectedFileName,
+             top1: x.top1FileName,
+             retrieved: (x.retrievedFileNames || []).join(" | "),
+             uniqueFiles: x.uniqueRetrievedFileCount,
+             firstHitFileRank: x.firstHitFileRank,
+             question: x.question
+           }))
+         );
+
+         console.table(
+           r.results
+             .filter(x => !x.hit)
+             .map(x => ({
+               idx: x.index,
+               expected: x.expectedFileName,
+               top1: x.top1FileName,
+               retrieved: (x.retrievedFileNames || []).join(" | "),
+               uniqueFiles: x.uniqueRetrievedFileCount,
+               firstHitFileRank: x.firstHitFileRank,
+               question: x.question
+             }))
+         );
+
+         window.__ragBenchmark = r;
+       })
+       .catch(err => console.error(err));

@@ -3,20 +3,25 @@ package com.itgeo;
 import io.github.cdimascio.dotenv.Dotenv;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
+import org.springframework.ai.vectorstore.redis.autoconfigure.RedisVectorStoreAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * @author gzx
- * &#064;description:  应用入口
- * &#064;date  2024-05-20 10:00:00
+ * 应用启动入口，负责启动 Spring Boot 并扫描 Mapper 接口。
  */
 @MapperScan("com.itgeo.mapper")
-@SpringBootApplication
+@SpringBootApplication(exclude = RedisVectorStoreAutoConfiguration.class)
 public class Application {
+
+    /**
+     * 启动应用前先加载 .env 配置，并写入系统属性供后续统一读取。
+     *
+     * @param args 启动参数
+     */
     public static void main(String[] args) {
-        //加载.env文件
+        // 加载项目环境变量文件，不存在时忽略。
         Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
-        //把.env文件中的变量添加到系统环境变量中
+        // 将 .env 配置写入系统属性，便于 Spring 与业务代码统一获取。
         dotenv.entries().forEach(entry -> System.setProperty(entry.getKey(), entry.getValue()));
 
         SpringApplication.run(Application.class, args);

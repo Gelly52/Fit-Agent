@@ -19,17 +19,29 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class ChatRecordItem {
 
+    /** 会话主键。 */
     private Long sessionId;
+    /** 前端会话编码。 */
     private String sessionCode;
+    /** 会话场景类型。 */
     private String sceneType;
+    /** 消息主键。 */
     private Long messageId;
+    /** 会话内顺序号。 */
     private Integer seqNo;
+    /** 消息角色。 */
     private String role;
+    /** 消息类型。 */
     private String messageType;
+    /** 当前轮来源类型。 */
     private String sourceType;
+    /** 消息正文。 */
     private String content;
+    /** 机器人消息标识。 */
     private String botMsgId;
+    /** 来源信息原始 JSON。 */
     private String sourcesJson;
+    /** 消息创建时间。 */
     private LocalDateTime createdAt;
 
 }

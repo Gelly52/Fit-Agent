@@ -18,7 +18,10 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 public class ChatRecordsResponse {
+    /** 当前登录用户主键。 */
     private Long userId;
+    /** 本次返回的会话条数。 */
     private Integer totalSessions;
+    /** 会话记录列表。 */
     private List<ChatSessionRecordItem> sessions;
 }

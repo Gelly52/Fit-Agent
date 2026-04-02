@@ -14,6 +14,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 用户登录与 SSE 建链相关接口。
+ */
 @Slf4j
 @RestController
 @RequestMapping("/user")
@@ -25,6 +28,12 @@ public class UserController {
     @Resource
     private SseTicketService sseTicketService;
 
+    /**
+     * 发送手机号登录验证码。
+     *
+     * @param request 验证码请求体
+     * @return 通用响应结果
+     */
     @PostMapping("/code")
     public LeeResult sendCode(@RequestBody UserCodeRequest request) {
         try {
@@ -38,6 +47,13 @@ public class UserController {
         }
     }
 
+    /**
+     * 使用手机号和验证码完成登录。
+     *
+     * @param request 登录请求体
+     * @param httpServletRequest HTTP 请求对象
+     * @return 通用响应结果
+     */
     @PostMapping("/login")
     public LeeResult login(@RequestBody UserLoginRequest request, HttpServletRequest httpServletRequest) {
         try {
@@ -55,6 +71,12 @@ public class UserController {
         }
     }
 
+    /**
+     * 退出当前登录状态。
+     *
+     * @param httpServletRequest HTTP 请求对象
+     * @return 通用响应结果
+     */
     @PostMapping("/logout")
     public LeeResult logout(HttpServletRequest httpServletRequest) {
         try {
@@ -68,6 +90,11 @@ public class UserController {
         }
     }
 
+    /**
+     * 为当前登录用户创建 SSE 建链票据。
+     *
+     * @return 通用响应结果
+     */
     @PostMapping("/sse-ticket")
     public LeeResult createSseTicket() {
         try {
@@ -80,6 +107,12 @@ public class UserController {
         }
     }
 
+    /**
+     * 优先读取 X-Forwarded-For，否则回退到直连地址。
+     *
+     * @param request HTTP 请求对象
+     * @return 客户端 IP
+     */
     private String resolveClientIp(HttpServletRequest request) {
         String xForwardedFor = request.getHeader("X-Forwarded-For");
         if (xForwardedFor != null && !xForwardedFor.isBlank()) {

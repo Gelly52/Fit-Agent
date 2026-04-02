@@ -1,7 +1,8 @@
 package com.itgeo.service;
 
-import com.itgeo.bean.RagConfigResponse;
-import com.itgeo.bean.RagDocumentItem;
+import com.itgeo.bean.rag.RagConfigResponse;
+import com.itgeo.bean.rag.RagDocumentItem;
+import com.itgeo.bean.rag.RagSearchResult;
 import org.springframework.ai.document.Document;
 import org.springframework.core.io.Resource;
 
@@ -11,14 +12,14 @@ import java.util.List;
  * 文档向量化与检索服务。
  *
  * 说明：
- * 1. 当前仅服务手动 RAG 上传/检索接口；
- * 2. Phase 1 不自动接入 /chat/doChat 或 /agent/execute；
- * 3. userId 参数用于约束文档归属范围。
+ * 1. 当前主要服务手动 RAG 上传、检索、文档列表与配置读取接口；
+ * 2. `userId` 是文档归属与检索隔离的核心上下文字段；
+ * 3. 检索结果应在向量库检索侧完成用户范围约束，而不是在返回后再做内存过滤。
  */
 public interface DocumentService {
 
     /**
-     * 加载文本文件并写入向量库。
+     * 读取文本文件、补齐 metadata、切分文档并写入向量库。
      *
      * @param resource 文本文件资源
      * @param fileName 文件名
@@ -33,17 +34,25 @@ public interface DocumentService {
      * @param question 提问内容
      * @param userId 当前用户主键
      * @param topK 期望返回数量
-     * @return 检索结果
+     * @return 已按当前用户范围约束后的检索结果
      */
     List<Document> doSearch(String question, Long userId, Integer topK);
 
+
+    RagSearchResult doSearchWithTrace(String question, Long userId, Integer topK);
+
     /**
      * 查询当前用户已上传的 RAG 文档列表。
+     *
+     * @param userId 当前用户主键
+     * @return 当前用户的文档元信息列表
      */
     List<RagDocumentItem> listUserDocuments(Long userId);
 
     /**
-     * 获取当前手动 RAG 配置。
+     * 获取当前手动 RAG 配置快照。
+     *
+     * @return 代码侧生效中的 RAG 配置
      */
     RagConfigResponse getRagConfig();
 

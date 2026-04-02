@@ -22,17 +22,17 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Agent 运行记录与步骤记录持久化服务实现。
+ * Agent run / step 持久化与查询服务实现。
  *
  * 职责：
- * 1. 创建 t_agent_run 主记录；
- * 2. 初始化 t_agent_step 固定步骤；
- * 3. 在执行过程中维护 run / step 的状态、输入输出和错误信息。
+ * 1. 创建 t_agent_run 主记录并初始化固定 step；
+ * 2. 在执行过程中维护 run / step 的状态流转、输入输出和错误信息；
+ * 3. 为控制器提供运行列表、运行详情及步骤映射结果。
  *
  * 说明：
- * - 当前实现只负责数据库状态维护，不负责真正的模型调用；
- * - stepStatus 使用数据库约定值：pending / running / success / failed；
- * - JSON 列当前统一按 String 存储，降低首期实现复杂度。
+ * - 本类只负责持久化与查询，不负责模型调用、SSE 推送或异步调度；
+ * - run / step 状态统一使用 pending / running / success / failed；
+ * - JSON 字段当前统一按 String 存储，便于首期落库和查询。
  */
 @Service
 @Transactional(rollbackFor = Exception.class)
@@ -206,6 +206,10 @@ public class AgentRunServiceImpl implements AgentRunService {
         agentStepMapper.updateById(update);
     }
 
+
+    /**
+     * 查询当前用户最近的 run 列表，并映射为列表接口使用的响应结构。
+     */
     @Override
     public List<AgentRunListItemResponse> listRuns(Long userId, String status, Integer limit) {
         if (userId == null) {
@@ -228,6 +232,10 @@ public class AgentRunServiceImpl implements AgentRunService {
                 .map(this::toListItemResponse)
                 .collect(Collectors.toList());
     }
+
+    /**
+     * 查询指定 run 的详情，并补齐该 run 下的 step 列表。
+     */
 
     @Override
     public AgentRunDetailResponse getRunDetail(Long userId, Long runId) {
@@ -272,6 +280,9 @@ public class AgentRunServiceImpl implements AgentRunService {
 
     }
 
+    /**
+     * 校验目标 run 主记录存在，供状态流转更新链路复用。
+     */
     private void ensureRunExists(Long runId) {
         // 1. runId 不能为空
         if (runId == null) {
@@ -283,6 +294,9 @@ public class AgentRunServiceImpl implements AgentRunService {
         }
     }
 
+    /**
+     * 查询指定 run 下的 step 记录；不存在时直接抛出异常。
+     */
     private AgentStep findRequiredStep(Long runId, Integer stepNo) {
         // 1. runId 和 stepNo 都不能为空
         if (runId == null) {
@@ -337,6 +351,9 @@ public class AgentRunServiceImpl implements AgentRunService {
         return normalized.length() <= 500 ? normalized : normalized.substring(0, 500);
     }
 
+    /**
+     * 将 run 主记录映射为列表项响应对象。
+     */
     private AgentRunListItemResponse toListItemResponse(AgentRun run) {
         AgentRunListItemResponse response = new AgentRunListItemResponse();
         response.setRunId(run.getId());
@@ -352,6 +369,9 @@ public class AgentRunServiceImpl implements AgentRunService {
         return response;
     }
 
+    /**
+     * 将 step 记录映射为详情响应中的步骤对象。
+     */
     private AgentRunStepResponse toStepResponse(AgentStep step) {
         AgentRunStepResponse response = new AgentRunStepResponse();
         response.setStepNo(step.getStepNo());
@@ -366,6 +386,9 @@ public class AgentRunServiceImpl implements AgentRunService {
         return response;
     }
 
+    /**
+     * 根据 chatSessionId 解析 sessionCode，供查询结果补齐展示字段。
+     */
     private String resolveSessionCode(Long chatSessionId) {
         if (chatSessionId == null) {
             return null;
@@ -374,6 +397,9 @@ public class AgentRunServiceImpl implements AgentRunService {
         return session == null ? null : session.getSessionCode();
     }
 
+    /**
+     * 规范化列表查询条数，统一默认值并限制最大返回上限。
+     */
     private int normalizeListLimit(Integer limit) {
         if (limit == null || limit <= 0) {
             return 10;

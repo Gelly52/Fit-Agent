@@ -5,18 +5,17 @@ import com.itgeo.bean.AgentExecuteAckResponse;
 import com.itgeo.bean.ChatEntity;
 
 /**
- * Agent 任务受理服务。
+ * Agent 任务受理服务契约。
  *
  * 职责：
- * 1. 校验 /agent/execute 请求参数；
- * 2. 处理幂等与并发锁；
- * 3. 在事务内创建会话、消息、run、step；
- * 4. 在事务提交后派发异步执行。
+ * 1. 定义 /agent/execute 的同步受理入口；
+ * 2. 返回本次请求的受理 ack；
+ * 3. 不承担 run 运行态推进与结果生成职责。
  */
 public interface AgentExecuteService {
 
-    /**
-     * 受理一条 Agent 执行请求，并立即返回 ack。
+/**
+     * 受理一条 Agent 执行请求，并返回同步 ack。
      *
      * @param authenticatedUser 当前登录用户上下文
      * @param chatEntity 聊天请求体

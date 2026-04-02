@@ -10,6 +10,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+/**
+ * 用户身体指标记录实体。
+ */
 @Data
 @ToString
 @TableName("t_body_metrics")
@@ -23,10 +26,13 @@ public class BodyMetrics {
     @TableField("body_fat")
     private BigDecimal bodyFat;
     @TableField("sleep_hours")
+    /** 睡眠时长，单位小时。 */
     private BigDecimal sleepHours;
     @TableField("fatigue_level")
+    /** 疲劳等级。 */
     private String fatigueLevel;
     private String note;
+    /** 摘要展示文本。 */
     private String summary;
     @TableField("created_at")
     private LocalDateTime createdAt;

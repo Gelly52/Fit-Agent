@@ -20,6 +20,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * bge-m3 embedding 的 HTTP 协议适配器。
+ *
+ * 该实现把 Spring AI 的 `EmbeddingModel` 调用转换成对外部 `/embed` 接口的 HTTP 请求，
+ * 负责协议转换与结果包装，不在当前应用内执行本地模型推理。
+ */
 @Slf4j
 @RequiredArgsConstructor
 public class BgeM3HttpEmbeddingModel implements EmbeddingModel {
@@ -31,12 +37,25 @@ public class BgeM3HttpEmbeddingModel implements EmbeddingModel {
     private final String modelName;
     private final int dimension;
 
+    /**
+     * 通过 HTTP 调用外部 bge-m3 embedding 服务，并转换为 Spring AI 响应对象。
+     */
     @Override
     public EmbeddingResponse call(EmbeddingRequest request) {
         List<String> texts = request.getInstructions();
         if (texts == null || texts.isEmpty()) {
             return new EmbeddingResponse(List.of());
         }
+
+        /*
+         * 适配流程：
+         * 1. 从 `EmbeddingRequest` 中提取待向量化文本列表；
+         * 2. 按当前 HTTP 服务约定组装 JSON 请求体，并 POST 到 `${serviceUrl}/embed`；
+         * 3. 校验 HTTP 状态码与响应体，确保服务端返回有效结果；
+         * 4. 把响应中的向量数组转换为 Spring AI `EmbeddingResponse`。
+         *
+         * 注意：这里是 HTTP 协议适配器，不是本地推理实现。
+         */
 
         BgeM3EmbedRequest payload = new BgeM3EmbedRequest(texts, 8, 1024);
         String json = JSONUtil.toJsonStr(payload);
@@ -76,6 +95,10 @@ public class BgeM3HttpEmbeddingModel implements EmbeddingModel {
         }
     }
 
+    /**
+     * 单文档便捷入口，内部委托到字符串 embedding 逻辑。
+     */
+
     @Override
     public float[] embed(Document document) {
         if (document == null || document.getText() == null) {
@@ -84,6 +107,9 @@ public class BgeM3HttpEmbeddingModel implements EmbeddingModel {
         return this.embed(document.getText());
     }
 
+    /**
+     * 单文本便捷入口，返回首条 embedding 结果。
+     */
     @Override
     public float[] embed(String text) {
         EmbeddingResponse response = this.call(new EmbeddingRequest(List.of(text), null));
@@ -93,6 +119,9 @@ public class BgeM3HttpEmbeddingModel implements EmbeddingModel {
         return response.getResults().get(0).getOutput();
     }
 
+    /**
+     * 批量文本便捷入口，按输入顺序返回向量列表。
+     */
     @Override
     public List<float[]> embed(List<String> texts) {
         EmbeddingResponse response = this.call(new EmbeddingRequest(texts, null));
@@ -106,6 +135,9 @@ public class BgeM3HttpEmbeddingModel implements EmbeddingModel {
         return outputs;
     }
 
+    /**
+     * 返回当前适配器声明的向量维度。
+     */
     @Override
     public int dimensions() {
         return dimension;
