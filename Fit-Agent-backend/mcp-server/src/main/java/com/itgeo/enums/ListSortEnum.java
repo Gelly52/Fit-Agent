@@ -2,7 +2,7 @@ package com.itgeo.enums;
 
 /**
  * @author gzx
- * @description: SSE消息类型
+ * @description: 列表排序方式
  * @date 2024-05-20 10:00:00
  */
 public enum ListSortEnum {
@@ -10,12 +10,12 @@ public enum ListSortEnum {
     ASC("asc", "升序排序"),
     DESC("desc", "降序排序");
 
-    public final String type;
-    public final String value;
+    public final String code;
+    public final String label;
 
-    ListSortEnum(String type, String value) {
-        this.type = type;
-        this.value = value;
+    ListSortEnum(String code, String label) {
+        this.code = code;
+        this.label = label;
     }
 
 }

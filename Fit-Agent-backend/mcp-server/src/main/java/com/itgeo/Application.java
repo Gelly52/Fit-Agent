@@ -1,8 +1,6 @@
 package com.itgeo;
 
-import com.itgeo.mcp.tool.DateTool;
-import com.itgeo.mcp.tool.EmailTool;
-import com.itgeo.mcp.tool.ProductTool;
+import com.itgeo.mcp.tool.*;
 import org.apache.ibatis.annotations.Mapper;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -28,9 +26,19 @@ public class Application {
 
     // 注册MCP工具回调提供器
     @Bean
-    public ToolCallbackProvider registMCPTools(DateTool dateTool, EmailTool emailTool, ProductTool productTool) {
+    public ToolCallbackProvider registMCPTools(
+            DateTool dateTool,
+            EmailTool emailTool,
+            TrainingLogTool trainingLogTool,
+            BodyMetricsTool bodyMetricsTool,
+            RagManageTool ragManageTool) {
         return MethodToolCallbackProvider.builder()
-                .toolObjects(dateTool, emailTool, productTool)
+                .toolObjects(
+                        dateTool,
+                        emailTool,
+                        trainingLogTool,
+                        bodyMetricsTool,
+                        ragManageTool)
                 .build();
 
     }

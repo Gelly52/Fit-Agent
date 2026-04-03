@@ -59,7 +59,7 @@ public class EmailTool {
     @Tool(description = "查询我的邮件/邮箱地址")
     public String getMyEmailAddress() {
         log.info("调用MCP工具：getMyEmailAddress()");
-        return "2858141738@qq.com";
+        return "xxxxxxxxxxxx@qq.com";
     }
 
     @Tool(description = "给指定邮箱发送邮件信息，Email为收件人邮箱，subject为邮件标题，message为邮件的内容")
