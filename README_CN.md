@@ -37,23 +37,44 @@ Fit-Agent
 │  ├─ vite.config.js                # Vite 配置
 │  └─ fitagent-vite.html            # 前端入口页面
 ├─ Fit-Agent-backend/
-│  ├─ mcp-client/                   # 业务后端，默认 7070
-│  │  └─ src/main/                  # 主要源码与资源目录
-│  ├─ mcp-server/                   # MCP 服务端模块
-│  │  └─ src/main/resources/sql/    # 数据库初始化 SQL
+│  ├─ mcp-client/
+│  │  ├─ src/main/java/             # 业务后端源码
+│  │  ├─ src/main/resources/
+│  │  │  ├─ .env.example            # 环境变量示例
+│  │  │  ├─ application-dev.example.yml
+│  │  │  └─ mcp-server.json         # MCP Client 连接配置
+│  │  └─ pom.xml
+│  ├─ mcp-server/
+│  │  ├─ src/main/java/             # MCP 服务端源码
+│  │  ├─ src/main/resources/
+│  │  │  ├─ .env.example            # 环境变量示例
+│  │  │  ├─ application-dev.example.yml
+│  │  │  └─ sql/fit_agent_init.sql  # 数据库初始化脚本
+│  │  └─ pom.xml
+│  ├─ .gitignore
 │  └─ pom.xml                       # 后端父级 Maven 工程
 ├─ datasets/
 │  ├─ rag-mvp-fitness-v1/           # 历史 RAG 数据集
+│  │  ├─ benchmark/
+│  │  ├─ knowledge/
+│  │  └─ sources/
 │  └─ rag-mvp-fitness-v2/           # 当前数据集、benchmark 与结果汇总
+│     ├─ benchmark/
+│     ├─ knowledge/
+│     ├─ sources/
+│     └─ benchmark_result_summary.md
 ├─ docs/
 │  ├─ database/                     # 数据库相关文档
 │  ├─ API接口文档.md                # 接口文档
+│  ├─ MCP工具能力说明.md            # MCP 工具说明
 │  ├─ RAG检索增强生成实现流程.md     # RAG 实现流程说明
 │  ├─ 登录与注册实现流程.md          # 登录注册流程说明
-│  └─ 聊天与Agent模式实现流程.md     # 聊天与 Agent 流程说明
+│  ├─ 聊天与Agent模式实现流程.md     # 聊天与 Agent 流程说明
+│  └─ 语义分块与混合检索实现说明.md   # 语义分块与混合检索说明
 ├─ pics/
 │  └─ fronted.png                   # README 截图
 ├─ .gitignore
+├─ LICENSE
 ├─ README.md
 └─ README_CN.md
 ```

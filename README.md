@@ -127,7 +127,7 @@ Open: `http://127.0.0.1:5500/fitagent-vite.html`
 - RAG knowledge enhancement: users can upload documents, retrieve relevant content, ask knowledge-grounded questions, and run retrieval benchmarks. The embedding layer also supports a locally deployed `bge-m3` model.
 - Search and fitness records: SearXNG-based web search augmentation is available alongside training log and body metrics recording features.
 - Semantic chunking and hybrid retrieval: the project now supports configurable semantic chunking and hybrid retrieval, allowing the RAG pipeline to combine vector recall with keyword-based retrieval. After hybrid fusion, the pipeline can also optionally rerank fused candidates before returning the final TopK results.
-- MCP tool support: the built-in MCP server currently provides tools for time lookup, email sending, training logs, body metrics, and RAG metadata / benchmark queries for structured agent-style operations. See `docs/MCP工具能力说明.md`.
+- MCP tool support: the built-in MCP server currently provides tools for time lookup, email sending, training logs, body metrics, and RAG metadata / benchmark queries for structured agent-style operations. 
 
 ## Notes
 
