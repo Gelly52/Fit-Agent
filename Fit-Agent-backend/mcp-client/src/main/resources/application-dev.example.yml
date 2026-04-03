@@ -23,6 +23,62 @@ spring:
       host: 127.0.0.1
       port: 9379
       password: your_redis_password
+rag:
+  # embedding: 向量模型侧配置
+  # - provider=transformers-default: 使用默认 embedding 模式
+  # - provider=bge-m3-http: 使用外部 HTTP embedding 服务
+  embedding:
+    provider: bge-m3-http
+    service-url: http://127.0.0.1:7086 # 仅在 provider=bge-m3-http 时生效
+    model-name: bge-m3 # 传给 embedding 服务的模型名
+    dimension: 1024 # 当前 embedding 向量维度，需与实际模型输出一致
+
+  # vectorstore: 向量索引存储配置，需要和 embedding 模式对应
+  vectorstore:
+    index-name: your-vector-index-name # Redis 向量索引名；应与当前 provider 产出的数据空间对应
+    prefix: "your:embedding:prefix:" # Redis 向量键前缀；应与当前 provider 产出的数据空间对应
+  #  1. 默认模式
+  #  provider: transformers-default
+  #  index-name: lee-vectorstore
+  #  prefix: embedding:
+  #  2. bge-m3 模式
+  #  provider: bge-m3-http
+  #  index-name: lee-vectorstore-bgem3
+  #  prefix: embedding:bgem3:
+
+  # retrieval: 检索阶段配置
+  # 当前主链路：vector recall + keyword recall -> RRF 融合候选池 -> heuristic rerank(可选) -> final topK
+  retrieval:
+    keyword-index-name: your_keyword_index_name # 关键词检索索引名
+    keyword-key-prefix: "your:rag:chunk:" # 关键词检索文档键前缀
+    mode: hybrid # 当前检索模式；当前代码主链路按 hybrid 设计
+    default-top-k: 4 # 请求未传 topK 时的默认返回数量
+    max-top-k: 10 # 单次请求允许的最大 topK
+    vector-recall-k: 16 # 向量召回候选数，仅用于向量 recall 阶段
+    keyword-recall-k: 16 # 关键词召回候选数，仅用于关键词 recall 阶段
+    rrf-k: 60 # RRF 融合常量，值越大不同 rank 间分差越平缓
+    vector-weight: 1.0 # 向量召回在 RRF 中的权重
+    keyword-weight: 1.0 # 关键词召回在 RRF 中的权重
+
+    rerank-enabled: false # 是否启用 heuristic rerank；false 时行为回退为纯 RRF finalTopK
+    rerank-candidate-k: 10 # RRF 融合后保留多少候选进入 rerank，至少应 >= finalTopK
+    rerank-fusion-weight: 1.0 # rerank 阶段中 fusionScore 的权重
+    rerank-dual-hit-boost: 0.15 # rerank 阶段中“双路命中(向量+关键词同时命中)”的加分
+    rerank-query-coverage-weight: 0.35 # rerank 阶段中 query 文本覆盖率的权重
+
+  # chunking: 分块阶段配置
+  # - strategy=token: 按长度/切分规则做常规分块
+  # - strategy=semantic: 按语义断点做语义分块
+  chunking:
+    strategy: token
+    merge-threshold: 0.20 # 仅 semantic 模式生效；相邻句相似度高于该阈值时继续合并
+    breakpoint-drop-threshold: 0.55 # 仅 semantic 模式生效；相似度突降超过该阈值时切块
+    max-chunk-sentence-count: 80 # semantic 模式下单个 chunk 的最大句子数上限
+    max-chunk-chars: 1200 # chunk 最大字符数上限
+    sentence-embedding-batch-size: 64 # semantic 模式下句向量批量计算大小
+    paragraph-boundary-enabled: false # semantic 模式下是否把段落边界视为硬切分边界
+    debug-log-enabled: false # semantic 分块调试日志开关
+
 internet:
   websearch:
     searxng:

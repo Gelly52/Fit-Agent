@@ -126,7 +126,7 @@ Open: `http://127.0.0.1:5500/fitagent-vite.html`
 - Chat and Agent collaboration: the system supports streaming chat, Agent task execution, and run tracking for task-oriented interactions.
 - RAG knowledge enhancement: users can upload documents, retrieve relevant content, ask knowledge-grounded questions, and run retrieval benchmarks. The embedding layer also supports a locally deployed `bge-m3` model.
 - Search and fitness records: SearXNG-based web search augmentation is available alongside training log and body metrics recording features.
-- Semantic chunking and hybrid retrieval: the project now supports configurable semantic chunking and hybrid retrieval, allowing the RAG pipeline to combine vector recall with keyword-based retrieval.
+- Semantic chunking and hybrid retrieval: the project now supports configurable semantic chunking and hybrid retrieval, allowing the RAG pipeline to combine vector recall with keyword-based retrieval. After hybrid fusion, the pipeline can also optionally rerank fused candidates before returning the final TopK results.
 
 ## Notes
 

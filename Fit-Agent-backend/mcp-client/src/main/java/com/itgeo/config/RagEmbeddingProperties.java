@@ -112,6 +112,13 @@ public class RagEmbeddingProperties {
 
         private String keywordIndexName = "rag_chunk_keyword_idx";
         private String keywordKeyPrefix = "rag:chunk:";
+
+        private Boolean rerankEnabled = false;
+        private Integer rerankCandidateK = 10;
+
+        private Double rerankFusionWeight = 1.0D;
+        private Double rerankDualHitBoost = 0.15D;
+        private Double rerankQueryCoverageWeight = 0.35D;
     }
 
 }

@@ -19,6 +19,12 @@ public class RagBenchmarkQuestionResultResponse {
     private Integer firstHitChunkRank;
     private Integer firstHitFileRank;
     private Boolean top1Hit;
+
+    private Double top1FusionScore;
+    private Double top1RerankScore;
+    private Double top1QueryCoverageScore;
+    private Boolean top1DualHit;
+
     private Double reciprocalRank;
     private Integer retrievedChunkCount;
     private Integer uniqueRetrievedFileCount;

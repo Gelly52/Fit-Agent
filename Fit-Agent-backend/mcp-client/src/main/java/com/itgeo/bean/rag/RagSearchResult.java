@@ -16,5 +16,9 @@ public class RagSearchResult {
     private List<RagRetrievedChunk> keywordHits = new ArrayList<>();
     private List<RagRetrievedChunk> fusedHits = new ArrayList<>();
 
+    private Boolean rerankEnabled;
+    private Integer fusionCandidateK;
+    private List<RagRetrievedChunk> finalHits = new ArrayList<>();
+
     private List<Document> finalDocuments = new ArrayList<>();
 }

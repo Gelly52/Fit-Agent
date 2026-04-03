@@ -42,6 +42,13 @@ public class RagConfigResponse {
     private Double keywordWeight;
     private String keywordIndexName;
 
+    private Boolean rerankEnabled;
+    private Integer rerankCandidateK;
+    private Double rerankFusionWeight;
+    private Double rerankDualHitBoost;
+    private Double rerankQueryCoverageWeight;
+    private String rerankStrategy;
+
     /** 当前分块策略：`token` / `semantic`。 */
     private String chunkingStrategy;
 

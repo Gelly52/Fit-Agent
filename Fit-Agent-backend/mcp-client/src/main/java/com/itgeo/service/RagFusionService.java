@@ -10,5 +10,5 @@ import java.util.List;
 public interface RagFusionService {
     List<RagRetrievedChunk> fuse(List<RagRetrievedChunk> vectorHits,
                                  List<RagRetrievedChunk> keywordHits,
-                                 int topK);
+                                 int fusionCandidateK);
 }

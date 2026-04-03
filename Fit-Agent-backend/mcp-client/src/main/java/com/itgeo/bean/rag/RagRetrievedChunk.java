@@ -17,4 +17,9 @@ public class RagRetrievedChunk {
     private Integer vectorRank;
     private Integer keywordRank;
     private Double fusionScore;
+
+    private Double rerankScore; // 最终重排分数
+    private Integer rerankRank; // 重排后的名次
+    private Double queryCoverageScore; // 文本覆盖率得分
+    private Boolean dualHit; //是否同时命中
 }

@@ -12,6 +12,7 @@ import com.itgeo.pojo.RagDocument;
 import com.itgeo.service.DocumentService;
 import com.itgeo.service.KeywordSearchService;
 import com.itgeo.service.RagFusionService;
+import com.itgeo.service.RerankService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -54,6 +55,8 @@ public class DocumentServiceImpl implements DocumentService {
     private final KeywordSearchService keywordSearchService;
 
     private final RagFusionService ragFusionService;
+
+    private final RerankService rerankService;
 
     /**
      * 读取文本、切分语义 chunk 并写入向量库。
@@ -145,23 +148,46 @@ public class DocumentServiceImpl implements DocumentService {
          * 2. 用户隔离发生在向量检索侧，只有满足 metadata.userId 的文档才会参与返回；
          * 3. 当前实现不是“先查全量结果，再在 Java 内存中过滤”。
          */
+        boolean rerankEnabled = Boolean.TRUE.equals(ragEmbeddingProperties.getRetrieval().getRerankEnabled());
+        int rerankCandidateK = normalizeRerankCandidateK(finalTopK);
+        int fusionCandidateK = rerankEnabled ? rerankCandidateK : finalTopK;
+
         List<RagRetrievedChunk> vectorHits = vectorRecall(question, userId, vectorRecallK);
         List<RagRetrievedChunk> keywordHits = keywordSearchService.search(question, userId, keywordRecallK);
-        List<RagRetrievedChunk> fusedHits = ragFusionService.fuse(vectorHits, keywordHits, finalTopK);
+//        List<RagRetrievedChunk> fusedHits = ragFusionService.fuse(vectorHits, keywordHits, finalTopK);
+        List<RagRetrievedChunk> fusedCandidates = ragFusionService.fuse(
+                vectorHits,
+                keywordHits,
+                fusionCandidateK
+        );
+
+        List<RagRetrievedChunk> finalHits = rerankEnabled
+                ? rerankService.rerank(question, fusedCandidates, finalTopK)
+                : fusedCandidates.stream().limit(finalTopK).collect(Collectors.toList());
+
 
         RagSearchResult result = new RagSearchResult();
         result.setQuestion(question);
         result.setFinalTopK(finalTopK);
         result.setVectorHits(vectorHits);
         result.setKeywordHits(keywordHits);
-        result.setFusedHits(fusedHits);
-        result.setFinalDocuments(
-                fusedHits.stream().map(RagRetrievedChunk::getDocument).collect(Collectors.toList())
-        );
+        result.setFusedHits(fusedCandidates);
+        result.setFinalDocuments(finalHits.stream().map(RagRetrievedChunk::getDocument).collect(Collectors.toList()));
+        result.setRerankEnabled(rerankEnabled);
+        result.setFusionCandidateK(fusionCandidateK);
+        result.setFinalHits(finalHits);
 
-        log.info("RAG混合检索完成, userId={}, finalTopK={}, vectorHits={}, keywordHits={}, fusedHits={}",
-                userId, finalTopK, vectorHits.size(), keywordHits.size(), fusedHits.size());
-
+        log.info("RAG混合检索完成, userId={}, finalTopK={}, fusionCandidateK={}, rerankEnabled={}, vectorRecallK={}, keywordRecallK={}, vectorHits={}, keywordHits={}, fusedCandidates={}, finalHits={}",
+                userId,
+                finalTopK,
+                fusionCandidateK,
+                rerankEnabled,
+                vectorRecallK,
+                keywordRecallK,
+                vectorHits.size(),
+                keywordHits.size(),
+                fusedCandidates.size(),
+                finalHits.size());
         return result;
     }
 
@@ -211,6 +237,13 @@ public class DocumentServiceImpl implements DocumentService {
         response.setKeywordWeight(ragEmbeddingProperties.getRetrieval().getKeywordWeight());
         response.setKeywordIndexName(ragEmbeddingProperties.getRetrieval().getKeywordIndexName());
 
+        response.setRerankEnabled(ragEmbeddingProperties.getRetrieval().getRerankEnabled());
+        response.setRerankCandidateK(ragEmbeddingProperties.getRetrieval().getRerankCandidateK());
+        response.setRerankFusionWeight(ragEmbeddingProperties.getRetrieval().getRerankFusionWeight());
+        response.setRerankDualHitBoost(ragEmbeddingProperties.getRetrieval().getRerankDualHitBoost());
+        response.setRerankQueryCoverageWeight(ragEmbeddingProperties.getRetrieval().getRerankQueryCoverageWeight());
+        response.setRerankStrategy("heuristic");
+
         if(ragEmbeddingProperties.getChunking() != null){
             response.setChunkingStrategy(ragEmbeddingProperties.getChunking().getStrategy());
             response.setMergeThreshold(ragEmbeddingProperties.getChunking().getMergeThreshold());
@@ -228,12 +261,19 @@ public class DocumentServiceImpl implements DocumentService {
      * 规范化 topK，避免一次检索请求过大。
      */
     private int normalizeTopK(Integer topK) {
-        int defaultTopK = ragEmbeddingProperties.getRetrieval().getDefaultTopK();
-        int maxTopK = ragEmbeddingProperties.getRetrieval().getMaxTopK();
+        Integer configuredDefaultTopK = ragEmbeddingProperties.getRetrieval().getDefaultTopK();
+        Integer configuredMaxTopK = ragEmbeddingProperties.getRetrieval().getMaxTopK();
+        int defaultTopK = (configuredDefaultTopK == null || configuredDefaultTopK <= 0)
+                ? DEFAULT_TOP_K
+                : configuredDefaultTopK;
+
+        int maxTopK = (configuredMaxTopK == null || configuredMaxTopK <= 0)
+                ? MAX_TOP_K
+                : Math.max(configuredMaxTopK, defaultTopK);
         if (topK == null || topK <= 0) {
-            return DEFAULT_TOP_K;
+            return defaultTopK;
         }
-        return Math.min(topK, MAX_TOP_K);
+        return Math.min(topK, maxTopK);
     }
 
     private List<RagRetrievedChunk> vectorRecall(String question, Long userId, int topK) {
@@ -298,5 +338,13 @@ public class DocumentServiceImpl implements DocumentService {
             return null;
         }
         return Integer.parseInt(String.valueOf(value));
+    }
+
+    private int normalizeRerankCandidateK(int finalTopK){
+        Integer configured = ragEmbeddingProperties.getRetrieval().getRerankCandidateK();
+        if (configured == null || configured <= 0) {
+            return finalTopK;
+        }
+        return Math.max(configured, finalTopK);
     }
 }

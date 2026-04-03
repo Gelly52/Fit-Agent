@@ -84,6 +84,9 @@ public class RagBenchmarkServiceImpl implements RagBenchmarkService {
                         effectiveTopK
                 );
                 List<Document> documents = searchResult.getFinalDocuments();
+                List<RagRetrievedChunk> finalHits = searchResult.getFinalHits();
+                RagRetrievedChunk top1Chunk = (finalHits == null || finalHits.isEmpty()) ? null : finalHits.get(0);
+
                 List<String> chunkFileNames = extractChunkFileNames(documents);
                 List<String> retrievedFileNames = extractRetrievedFileNames(documents);
 
@@ -134,6 +137,12 @@ public class RagBenchmarkServiceImpl implements RagBenchmarkService {
                 questionResult.setUniqueRetrievedFileCount(uniqueRetrievedFileCount);
                 questionResult.setDuplicateChunkCount(duplicateChunkCount);
                 questionResult.setTop1FileName(top1FileName);
+
+                questionResult.setTop1FusionScore(top1Chunk == null ? null : top1Chunk.getFusionScore());
+                questionResult.setTop1RerankScore(top1Chunk == null ? null : top1Chunk.getRerankScore());
+                questionResult.setTop1QueryCoverageScore(top1Chunk == null ? null : top1Chunk.getQueryCoverageScore());
+                questionResult.setTop1DualHit(top1Chunk == null ? null : top1Chunk.getDualHit());
+
                 results.add(questionResult);
             }
 
@@ -238,6 +247,21 @@ public class RagBenchmarkServiceImpl implements RagBenchmarkService {
         snapshot.put("filterScanLimit", ragConfig.getFilterScanLimit());
         snapshot.put("userIsolationEnabled", ragConfig.getUserIsolationEnabled());
         snapshot.put("isolationStrategy", ragConfig.getIsolationStrategy());
+
+        snapshot.put("retrievalMode", ragConfig.getRetrievalMode());
+        snapshot.put("vectorRecallK", ragConfig.getVectorRecallK());
+        snapshot.put("keywordRecallK", ragConfig.getKeywordRecallK());
+        snapshot.put("rrfK", ragConfig.getRrfK());
+        snapshot.put("vectorWeight", ragConfig.getVectorWeight());
+        snapshot.put("keywordWeight", ragConfig.getKeywordWeight());
+        snapshot.put("keywordIndexName", ragConfig.getKeywordIndexName());
+
+        snapshot.put("rerankEnabled", ragConfig.getRerankEnabled());
+        snapshot.put("rerankCandidateK", ragConfig.getRerankCandidateK());
+        snapshot.put("rerankFusionWeight", ragConfig.getRerankFusionWeight());
+        snapshot.put("rerankDualHitBoost", ragConfig.getRerankDualHitBoost());
+        snapshot.put("rerankQueryCoverageWeight", ragConfig.getRerankQueryCoverageWeight());
+        snapshot.put("rerankStrategy", ragConfig.getRerankStrategy());
 
         snapshot.put("chunkingStrategy", ragConfig.getChunkingStrategy());
         snapshot.put("mergeThreshold", ragConfig.getMergeThreshold());
