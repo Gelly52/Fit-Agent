@@ -40,26 +40,26 @@ public class TrainingLogTool {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class CreateTrainingLogRequest {
-        @ToolParam(description = "用户ID")
+        @ToolParam(description = "当前用户ID")
         private Long userId;
 
-        @ToolParam(description = "训练日期，格式 yyyy-MM-dd")
+        @ToolParam(description = "本次训练日期，格式 yyyy-MM-dd")
         private String trainingDate;
 
-        @ToolParam(description = "训练摘要")
+        @ToolParam(description = "本次训练摘要")
         private String summary;
 
-        @ToolParam(description = "主要训练肌群", required = false)
+        @ToolParam(description = "本次训练主要肌群", required = false)
         private String primaryMuscleGroup;
 
-        @ToolParam(description = "总训练量", required = false)
+        @ToolParam(description = "本次训练总训练量", required = false)
         private BigDecimal totalVolume;
 
-        @ToolParam(description = "来源：manual/chat/import", required = false)
+        @ToolParam(description = "训练记录来源：manual/chat/import", required = false)
         private String source;
     }
 
-    @Tool(description = "新增训练日志")
+    @Tool(description = "新增一条训练日志记录")
     public String createTrainingLog(CreateTrainingLogRequest request) {
         log.info("调用MCP工具：createTrainingLog");
         log.info("训练日志请求参数 request：{}", request);
@@ -82,33 +82,31 @@ public class TrainingLogTool {
         return "训练日志创建成功，ID=" + trainingLog.getId();
     }
 
-    // 查询训练日志请求 DTO
     @Data
     @ToString
     @AllArgsConstructor
     @NoArgsConstructor
     public static class QueryTrainingLogRequest {
-        @ToolParam(description = "用户ID", required = false)
+        @ToolParam(description = "查询用户ID", required = false)
         private Long userId;
 
         @ToolParam(description = "训练日期，格式 yyyy-MM-dd", required = false)
         private String trainingDate;
 
-        @ToolParam(description = "主要训练肌群", required = false)
+        @ToolParam(description = "训练主要肌群", required = false)
         private String primaryMuscleGroup;
 
-        @ToolParam(description = "来源：manual/chat/import", required = false)
+        @ToolParam(description = "训练记录来源：manual/chat/import", required = false)
         private String source;
 
-        @ToolParam(description = "训练摘要关键词", required = false)
+        @ToolParam(description = "训练摘要关键字", required = false)
         private String summaryKeyword;
 
         @ToolParam(description = "排序方式：asc/desc", required = false)
         private ListSortEnum sortEnum;
     }
 
-
-    @Tool(description = "按条件查询训练日志")
+    @Tool(description = "按条件查询训练日志记录")
     public List<TrainingLog> queryTrainingLogs(QueryTrainingLogRequest request) {
         log.info("调用MCP工具：queryTrainingLogs");
         log.info("训练日志查询参数 request：{}", request);
@@ -141,7 +139,9 @@ public class TrainingLogTool {
     }
 
     @Tool(description = "根据训练日志ID查询动作明细")
-    public List<TrainingExercise> queryTrainingExercises(Long trainingLogId) {
+    public List<TrainingExercise> queryTrainingExercises(
+            @ToolParam(description = "训练日志ID") Long trainingLogId
+    ) {
         log.info("调用MCP工具：queryTrainingExercises, trainingLogId={}", trainingLogId);
 
         QueryWrapper<TrainingExercise> queryWrapper = new QueryWrapper<>();
@@ -159,26 +159,26 @@ public class TrainingLogTool {
         @ToolParam(description = "所属训练日志ID")
         private Long trainingLogId;
 
-        @ToolParam(description = "动作名称")
+        @ToolParam(description = "训练动作名称")
         private String exerciseName;
 
-        @ToolParam(description = "组数", required = false)
+        @ToolParam(description = "动作组数", required = false)
         private Integer sets;
 
         @ToolParam(description = "每组次数", required = false)
         private Integer reps;
 
-        @ToolParam(description = "重量kg", required = false)
+        @ToolParam(description = "动作重量kg", required = false)
         private BigDecimal weight;
 
-        @ToolParam(description = "动作顺序", required = false)
+        @ToolParam(description = "动作执行顺序", required = false)
         private Integer orderNum;
 
-        @ToolParam(description = "推断肌群", required = false)
+        @ToolParam(description = "动作对应肌群", required = false)
         private String estimatedMuscleGroup;
     }
 
-    @Tool(description = "新增训练动作明细")
+    @Tool(description = "新增一条训练动作明细")
     public String createTrainingExercise(CreateTrainingExerciseRequest request) {
         log.info("调用MCP工具：createTrainingExercise");
         log.info("训练动作请求参数 request：{}", request);
@@ -209,23 +209,23 @@ public class TrainingLogTool {
         @ToolParam(description = "训练日志ID")
         private Long id;
 
-        @ToolParam(description = "训练日期，格式 yyyy-MM-dd", required = false)
+        @ToolParam(description = "修改后的训练日期，格式 yyyy-MM-dd", required = false)
         private String trainingDate;
 
-        @ToolParam(description = "训练摘要", required = false)
+        @ToolParam(description = "修改后的训练摘要", required = false)
         private String summary;
 
-        @ToolParam(description = "主要训练肌群", required = false)
+        @ToolParam(description = "修改后的主要训练肌群", required = false)
         private String primaryMuscleGroup;
 
-        @ToolParam(description = "总训练量", required = false)
+        @ToolParam(description = "修改后的总训练量", required = false)
         private BigDecimal totalVolume;
 
-        @ToolParam(description = "来源：manual/chat/import", required = false)
+        @ToolParam(description = "修改后的训练记录来源：manual/chat/import", required = false)
         private String source;
     }
 
-    @Tool(description = "根据训练日志ID修改训练日志")
+    @Tool(description = "根据训练日志ID修改训练日志内容")
     public String modifyTrainingLog(ModifyTrainingLogRequest request) {
         log.info("调用MCP工具：modifyTrainingLog");
         log.info("训练日志修改参数 request：{}", request);
@@ -260,7 +260,9 @@ public class TrainingLogTool {
 
     @Transactional
     @Tool(description = "根据训练日志ID删除训练日志及动作明细")
-    public String deleteTrainingLog(Long trainingLogId) {
+    public String deleteTrainingLog(
+            @ToolParam(description = "训练日志ID") Long trainingLogId
+    ) {
         log.info("调用MCP工具：deleteTrainingLog, trainingLogId={}", trainingLogId);
 
         if (trainingLogId == null) {

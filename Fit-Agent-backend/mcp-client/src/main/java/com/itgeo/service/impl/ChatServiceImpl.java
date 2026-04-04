@@ -2,13 +2,19 @@ package com.itgeo.service.impl;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.itgeo.auth.AuthenticatedUserContext;
 import com.itgeo.bean.ChatEntity;
 import com.itgeo.bean.ChatResponseEntity;
 import com.itgeo.bean.ChatStreamChunkResponse;
 import com.itgeo.bean.SearchResult;
 import com.itgeo.enums.SSEMsgType;
+import com.itgeo.mapper.BodyMetricsMapper;
+import com.itgeo.mapper.TrainingLogMapper;
+import com.itgeo.pojo.BodyMetrics;
 import com.itgeo.pojo.ChatSession;
+import com.itgeo.pojo.TrainingLog;
+import com.itgeo.prompt.PromptTemplateManager;
 import com.itgeo.service.ChatService;
 import com.itgeo.service.ChatSessionService;
 import com.itgeo.service.DocumentService;
@@ -27,6 +33,7 @@ import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -46,11 +53,28 @@ public class ChatServiceImpl implements ChatService {
     private DocumentService documentService;
     @Resource
     private ChatSessionService chatSessionService;
+    @Resource
+    private PromptTemplateManager promptTemplateManager;
+    // 查询用户数据来构建上下文，需要注入对应的 Mapper
+    @Resource
+    private TrainingLogMapper trainingLogMapper;
+    @Resource
+    private BodyMetricsMapper bodyMetricsMapper;
 
     @Data
     private static class PreparedChatContext {
         private ChatSession session;
         private Long assistantMessageId;
+    }
+
+    /**
+     * 增强数据容器
+     * 用于存储 RAG 和联网搜索的数据
+     */
+    @Data
+    private static class EnhancementData {
+        private List<Document> ragContext;
+        private List<SearchResult> searchResults;
     }
 
     /**
@@ -89,64 +113,6 @@ public class ChatServiceImpl implements ChatService {
         return ctx;
     }
 
-    private static final String RAG_PROMPT_TEMPLATE = """
-            基于上下文的知识库内容回答问题：
-            【上下文】
-            {context}
-            
-            【问题】
-            {question}
-            
-            【输出】
-            如果没有查到相关信息，回答“我没有查到相关信息”，但（若用户无特殊说明）需要基于你的已有知识做简要的阐述。
-            如果查到相关信息，你只能根据上下文的信息，来回答用户的问题，不相关的近似内容不必提到。
-            """;
-
-    private static final String INTERNET_PROMPT_TEMPLATE = """
-            你是一个互联网搜索大师，请基于以下联网搜索结果作为上下文，根据你的理解结合用户提问，综合后生成并输出专业的回答。
-            基于上下文的知识库内容回答问题：
-            【上下文】
-            {context}
-            
-            【问题】
-            {question}
-            
-            【输出】
-            如果没有查到相关信息，结合你的理解做简要的阐述（需说明未查询到相关实际来源信息）。
-            如果查到相关信息，请回复具体的内容。
-            """;
-
-    private static final String AGENT_CHAT_PROMPT_TEMPLATE = """
-     你是一个健身助手，用户现在为你取名为：FitAgent。
-
-     回答规则：
-     1. 如果当前没有开启知识库增强，不要说“我没有查到相关信息”；
-     2. 如果当前没有开启联网补充，不要说“我没有查询到网络信息”；
-     3. 当没有外部来源时，直接基于你的通用知识回答；
-     4. 只有用户明确要求实时信息、外部资料或来源引用时，才说明“当前未开启对应增强能力，以下回答基于通用知识”。
-
-     【问题】
-     {question}
-     """;
-
-    private static final String HYBRID_PROMPT_TEMPLATE = """
-            你是一个健身助手，用户现在为你取名为：FitAgent，请综合知识库内容与联网搜索结果回答用户问题。
-            
-            【知识库上下文】
-            {ragContext}
-            
-            【联网搜索结果】
-            {internetContext}
-            
-            【问题】
-            {question}
-            
-            【要求】
-            1. 优先使用知识库中直接相关的内容；
-            2. 知识库不足时，再使用联网结果补充；
-            3. 如果两类来源冲突，要明确指出；
-            4. 不要编造不存在的来源。
-            """;
 
     private final ChatClient chatClient;
 
@@ -222,19 +188,13 @@ public class ChatServiceImpl implements ChatService {
 
         String question = chatEntity.getMessage();
         String botMsgId = chatEntity.getBotMsgId();
-        String context = "";
-        if (ragContext != null && !ragContext.isEmpty()) {
-            context = ragContext.stream()
-                    .map(Document::getText)
-                    .filter(StrUtil::isNotBlank)
-                    .collect(Collectors.joining("\n"));
-        }
-        Prompt prompt = new Prompt(RAG_PROMPT_TEMPLATE
-                .replace("{context}", context)
-                .replace("{question}", question));
+        String context = extractRagText(ragContext);
+
+        String ragPrompt = promptTemplateManager.buildRagPrompt(context, question);
+        Prompt prompt = new Prompt(ragPrompt);
 
         Flux<String> stringFlux = chatClient.prompt(prompt).stream().content();
-        Object normalizedSources = buildRagSources(ragContext); // 封装RAG上下文来源
+        Object normalizedSources = buildRagSources(ragContext);
         return streamAndSend(
                 stringFlux,
                 authenticatedUser,
@@ -265,9 +225,12 @@ public class ChatServiceImpl implements ChatService {
         String botMsgId = chatEntity.getBotMsgId();
 
         List<SearchResult> searchResults = searXngService.search(question);
-        Prompt prompt = new Prompt(buildInternetPrompt(question, searchResults));
+        String internetText = extractInternetText(searchResults);
+        String internetPrompt = promptTemplateManager.buildInternetPrompt(internetText, question);
+
+        Prompt prompt = new Prompt(internetPrompt);
         Flux<String> stringFlux = chatClient.prompt(prompt).stream().content();
-        Object normalizedSources = buildInternetSources(searchResults); // 封装联网搜索结果
+        Object normalizedSources = buildInternetSources(searchResults);
         return streamAndSend(
                 stringFlux,
                 authenticatedUser,
@@ -279,28 +242,6 @@ public class ChatServiceImpl implements ChatService {
                 sourceType,
                 normalizedSources
         );
-    }
-
-    /**
-     * 组装联网搜索提示词。
-     */
-    private static String buildInternetPrompt(String question, List<SearchResult> searchResults) {
-        StringBuilder context = new StringBuilder();
-        if (searchResults != null) {
-            for (SearchResult searchResult : searchResults) {
-                if (searchResult == null) {
-                    continue;
-                }
-                context.append(
-                        String.format("<context>\n [来源] %s \n [摘要] %s \n </context>\n",
-                                searchResult.getUrl(),
-                                searchResult.getContent()));
-            }
-        }
-
-        return INTERNET_PROMPT_TEMPLATE
-                .replace("{context}", context)
-                .replace("{question}", question);
     }
 
     /**
@@ -320,10 +261,35 @@ public class ChatServiceImpl implements ChatService {
     ) {
         String sourceType = resolveSourceType(chatEntity);
         ChatSession session = requireExistingSession(chatSessionId, authenticatedUser);
-//        String prompt = chatEntity.getMessage();
-        Prompt prompt = new Prompt(
-                AGENT_CHAT_PROMPT_TEMPLATE.replace("{question}", chatEntity.getMessage())
+
+        // 1. 查询用户最近训练数据（最近14天）
+        LocalDate fourteenDaysAgo = LocalDate.now().minusDays(14);
+        QueryWrapper<TrainingLog> trainingQuery = new QueryWrapper<>();
+        trainingQuery.eq("user_id", authenticatedUser.getUserId())
+                .ge("training_date", fourteenDaysAgo)
+                .orderByDesc("training_date");
+        List<TrainingLog> recentLogs = trainingLogMapper.selectList(trainingQuery);
+
+        // 2. 查询最新身体指标
+        QueryWrapper<BodyMetrics> metricsQuery = new QueryWrapper<>();
+        metricsQuery.eq("user_id", authenticatedUser.getUserId())
+                .orderByDesc("record_date")
+                .last("LIMIT 1");
+        BodyMetrics latestMetrics = bodyMetricsMapper.selectOne(metricsQuery);
+
+        // 3. 构建用户上下文
+        String userContext = promptTemplateManager.buildUserContext(
+                authenticatedUser.getUserId(),
+                recentLogs,
+                latestMetrics
         );
+
+        // 4. 构建最终提示词
+        String finalPrompt = promptTemplateManager.buildAgentPrompt(
+                userContext,
+                chatEntity.getMessage()
+        );
+        Prompt prompt = new Prompt(finalPrompt);
         String botMsgId = chatEntity.getBotMsgId();
         Flux<String> stringFlux = chatClient.prompt(prompt).stream().content();
 
@@ -346,8 +312,9 @@ public class ChatServiceImpl implements ChatService {
      * <p>
      * 步骤：
      * 1. 校验 Agent 会话归属；
-     * 2. 先执行联网搜索并组装增强提示词；
-     * 3. 将搜索来源一并透传给流式发送与最终回填逻辑。
+     * 2. 加载增强数据（Internet）；
+     * 3. 构建提示词并发起流式调用；
+     * 4. 将搜索来源一并透传给流式发送与最终回填逻辑。
      */
     public ChatResponseEntity doAgentInternetSearch(
             ChatEntity chatEntity,
@@ -358,25 +325,31 @@ public class ChatServiceImpl implements ChatService {
     ) {
         String sourceType = resolveSourceType(chatEntity);
         ChatSession session = requireExistingSession(chatSessionId, authenticatedUser);
-        String question = chatEntity.getMessage();
-        String botMsgId = chatEntity.getBotMsgId();
 
-        List<SearchResult> searchResults = searXngService.search(question);
-        Prompt prompt = new Prompt(buildInternetPrompt(question, searchResults));
+        // 1. 加载增强数据
+        EnhancementData data = loadEnhancementData(chatEntity, authenticatedUser);
+
+        // 2. 构建提示词（Internet 模式不需要用户上下文）
+        String finalPrompt = buildPromptByEnhancement(chatEntity, data, null);
+
+        // 3. 调用模型
+        Prompt prompt = new Prompt(finalPrompt);
         Flux<String> stringFlux = chatClient.prompt(prompt).stream().content();
-        Object normalizedSources = buildInternetSources(searchResults);
+
+        // 4. 构建来源
+        Object sources = buildSourcesByEnhancement(data, chatEntity);
 
         return streamAndSend(
                 stringFlux,
                 authenticatedUser,
-                botMsgId,
+                chatEntity.getBotMsgId(),
                 session.getId(),
                 session.getSessionCode(),
                 assistantMessageId,
                 runId,
                 "agent",
                 sourceType,
-                normalizedSources
+                sources
         );
     }
 
@@ -615,6 +588,113 @@ public class ChatServiceImpl implements ChatService {
         return chatEntity != null && Boolean.TRUE.equals(chatEntity.getInternetEnabled());
     }
 
+    /**
+     * 根据增强类型加载对应数据
+     */
+    private EnhancementData loadEnhancementData(
+            ChatEntity chatEntity,
+            AuthenticatedUserContext authenticatedUser
+    ) {
+        EnhancementData data = new EnhancementData();
+
+        if (isRagEnabled(chatEntity)) {
+            data.setRagContext(loadRagContext(chatEntity, authenticatedUser));
+        }
+        if (isInternetEnabled(chatEntity)) {
+            data.setSearchResults(searXngService.search(chatEntity.getMessage()));
+        }
+
+        return data;
+    }
+
+    /**
+     * 提取 RAG 文本
+     */
+    private String extractRagText(List<Document> ragContext) {
+        return ragContext == null ? "" : ragContext.stream()
+                .map(Document::getText)
+                .filter(StrUtil::isNotBlank)
+                .collect(Collectors.joining("\n"));
+    }
+
+    /**
+     * 提取联网搜索文本
+     */
+    private String extractInternetText(List<SearchResult> searchResults) {
+        return searchResults == null ? "" : searchResults.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(item -> "[来源] " + item.getUrl() + "\n[内容] " + item.getContent())
+                .collect(Collectors.joining("\n\n"));
+    }
+
+    /**
+     * 根据增强类型构建提示词
+     *
+     * @param chatEntity  聊天实体
+     * @param data        增强数据
+     * @param userContext 用户上下文（Agent 模式需要，Chat 模式传 null）
+     * @return 构建好的提示词
+     */
+    private String buildPromptByEnhancement(
+            ChatEntity chatEntity,
+            EnhancementData data,
+            String userContext
+    ) {
+        boolean ragEnabled = isRagEnabled(chatEntity);
+        boolean internetEnabled = isInternetEnabled(chatEntity);
+        String question = chatEntity.getMessage();
+
+        // Hybrid 模式
+        if (ragEnabled && internetEnabled) {
+            String ragText = extractRagText(data.getRagContext());
+            String internetText = extractInternetText(data.getSearchResults());
+            return promptTemplateManager.buildHybridPrompt(ragText, internetText, question);
+        }
+
+        // RAG 模式
+        if (ragEnabled) {
+            String ragText = extractRagText(data.getRagContext());
+            return promptTemplateManager.buildRagPrompt(ragText, question);
+        }
+
+        // Internet 模式
+        if (internetEnabled) {
+            String internetText = extractInternetText(data.getSearchResults());
+            return promptTemplateManager.buildInternetPrompt(internetText, question);
+        }
+
+        // 纯对话模式
+        if (userContext != null) {
+            // Agent 模式：需要用户上下文
+            return promptTemplateManager.buildAgentPrompt(userContext, question);
+        } else {
+            // Chat 模式：简单对话
+            return promptTemplateManager.buildChatPrompt(question);
+        }
+    }
+
+    /**
+     * 根据增强类型构建来源信息
+     */
+    private Object buildSourcesByEnhancement(EnhancementData data, ChatEntity chatEntity) {
+        boolean ragEnabled = isRagEnabled(chatEntity);
+        boolean internetEnabled = isInternetEnabled(chatEntity);
+
+        if (ragEnabled && internetEnabled) {
+            return mergeSources(
+                    buildRagSources(data.getRagContext()),
+                    buildInternetSources(data.getSearchResults())
+            );
+        }
+        if (ragEnabled) {
+            return buildRagSources(data.getRagContext());
+        }
+        if (internetEnabled) {
+            return buildInternetSources(data.getSearchResults());
+        }
+        return null;
+    }
+
     private String resolveSourceType(ChatEntity chatEntity) {
         boolean ragEnabled = isRagEnabled(chatEntity);
         boolean internetEnabled = isInternetEnabled(chatEntity);
@@ -662,9 +742,9 @@ public class ChatServiceImpl implements ChatService {
      * <p>
      * 步骤：
      * 1. 校验 Agent 会话归属；
-     * 2. 自动检索当前用户知识库片段；
-     * 3. 组装 RAG 提示词并发起流式调用；
-     * 4. 把知识库来源一并回填到 assistant 消息与 FINISH 响应中。
+     * 2. 加载增强数据（RAG/Internet）；
+     * 3. 构建提示词并发起流式调用；
+     * 4. 把来源一并回填到 assistant 消息与 FINISH 响应中。
      */
     private ChatResponseEntity doAgentRagSearch(
             ChatEntity chatEntity,
@@ -676,31 +756,30 @@ public class ChatServiceImpl implements ChatService {
         String sourceType = resolveSourceType(chatEntity);
         ChatSession session = requireExistingSession(chatSessionId, authenticatedUser);
 
-        List<Document> ragContext = loadRagContext(chatEntity, authenticatedUser);
-        String question = chatEntity.getMessage();
-        String botMsgId = chatEntity.getBotMsgId();
-        String context = ragContext.stream()
-                .map(Document::getText)
-                .filter(StrUtil::isNotBlank)
-                .collect(Collectors.joining("\n"));
+        // 1. 加载增强数据
+        EnhancementData data = loadEnhancementData(chatEntity, authenticatedUser);
 
-        Prompt prompt = new Prompt(RAG_PROMPT_TEMPLATE
-                .replace("{context}", context)
-                .replace("{question}", question));
+        // 2. 构建提示词（RAG 模式不需要用户上下文）
+        String finalPrompt = buildPromptByEnhancement(chatEntity, data, null);
+
+        // 3. 调用模型
+        Prompt prompt = new Prompt(finalPrompt);
         Flux<String> stringFlux = chatClient.prompt(prompt).stream().content();
-        Object normalizedSources = buildRagSources(ragContext);
+
+        // 4. 构建来源
+        Object sources = buildSourcesByEnhancement(data, chatEntity);
 
         return streamAndSend(
                 stringFlux,
                 authenticatedUser,
-                botMsgId,
+                chatEntity.getBotMsgId(),
                 session.getId(),
                 session.getSessionCode(),
                 assistantMessageId,
                 runId,
                 "agent",
                 sourceType,
-                normalizedSources
+                sources
         );
     }
 
@@ -811,19 +890,8 @@ public class ChatServiceImpl implements ChatService {
             List<Document> ragContext,
             List<SearchResult> searchResults
     ) {
-        String ragText = ragContext == null ? "" : ragContext.stream()
-                .map(Document::getText)
-                .filter(StrUtil::isNotBlank)
-                .collect(Collectors.joining("\n"));
-
-        String internetText = searchResults == null ? "" : searchResults.stream()
-                .filter(java.util.Objects::nonNull)
-                .map(item -> "[来源] " + item.getUrl() + "\n[摘要] " + item.getContent())
-                .collect(Collectors.joining("\n\n"));
-
-        return HYBRID_PROMPT_TEMPLATE
-                .replace("{ragContext}", ragText)
-                .replace("{internetContext}", internetText)
-                .replace("{question}", question);
+        String ragText = extractRagText(ragContext);
+        String internetText = extractInternetText(searchResults);
+        return promptTemplateManager.buildHybridPrompt(ragText, internetText, question);
     }
 }

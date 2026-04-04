@@ -36,18 +36,17 @@ public class RagManageTool {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class QueryRagDocumentRequest {
-        @ToolParam(description = "上传用户ID", required = false)
+        @ToolParam(description = "文档所属用户ID", required = false)
         private Long userId;
 
-        @ToolParam(description = "文件名关键词", required = false)
+        @ToolParam(description = "文档文件名关键字", required = false)
         private String fileName;
 
-        @ToolParam(description = "文件哈希", required = false)
+        @ToolParam(description = "文档文件哈希", required = false)
         private String fileHash;
 
-        @ToolParam(description = "向量状态", required = false)
+        @ToolParam(description = "文档向量状态", required = false)
         private String vectorStatus;
-
 
         @ToolParam(description = "排序方式：asc/desc", required = false)
         private ListSortEnum sortEnum;
@@ -88,21 +87,20 @@ public class RagManageTool {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class QueryRagBenchmarkRunRequest {
-        @ToolParam(description = "发起用户ID", required = false)
+        @ToolParam(description = "评测任务发起用户ID", required = false)
         private Long userId;
 
-        @ToolParam(description = "评测数据集名称", required = false)
+        @ToolParam(description = "评测数据集名称关键字", required = false)
         private String datasetName;
 
-        @ToolParam(description = "状态：pending/running/success/failed", required = false)
+        @ToolParam(description = "评测任务状态：pending/running/success/failed", required = false)
         private String status;
-
 
         @ToolParam(description = "排序方式：asc/desc", required = false)
         private ListSortEnum sortEnum;
     }
 
-    @Tool(description = "按条件查询RAG评测任务")
+    @Tool(description = "按条件查询RAG评测任务记录")
     public List<RagBenchmarkRun> queryRagBenchmarkRuns(QueryRagBenchmarkRunRequest request) {
         log.info("调用MCP工具：queryRagBenchmarkRuns");
         log.info("RAG评测任务查询参数 request：{}", request);

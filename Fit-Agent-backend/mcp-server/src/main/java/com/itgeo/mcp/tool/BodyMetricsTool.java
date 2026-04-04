@@ -33,32 +33,32 @@ public class BodyMetricsTool {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class CreateBodyMetricsRequest {
-        @ToolParam(description = "用户ID")
+        @ToolParam(description = "当前用户ID")
         private Long userId;
 
         @ToolParam(description = "记录日期，格式 yyyy-MM-dd")
         private String recordDate;
 
-        @ToolParam(description = "体重kg", required = false)
+        @ToolParam(description = "体重数据，单位kg", required = false)
         private BigDecimal weight;
 
-        @ToolParam(description = "体脂率%", required = false)
+        @ToolParam(description = "体脂率数据，单位%", required = false)
         private BigDecimal bodyFat;
 
-        @ToolParam(description = "睡眠时长h", required = false)
+        @ToolParam(description = "睡眠时长，单位h", required = false)
         private BigDecimal sleepHours;
 
         @ToolParam(description = "疲劳度：低/中/高", required = false)
         private String fatigueLevel;
 
-        @ToolParam(description = "备注", required = false)
+        @ToolParam(description = "体测备注", required = false)
         private String note;
 
-        @ToolParam(description = "摘要", required = false)
+        @ToolParam(description = "体测摘要", required = false)
         private String summary;
     }
 
-    @Tool(description = "新增身体指标记录")
+    @Tool(description = "新增一条身体指标记录")
     public String createBodyMetrics(CreateBodyMetricsRequest request) {
         log.info("调用MCP工具：createBodyMetrics");
         log.info("身体指标请求参数 request：{}", request);
@@ -88,7 +88,7 @@ public class BodyMetricsTool {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class QueryBodyMetricsRequest {
-        @ToolParam(description = "用户ID", required = false)
+        @ToolParam(description = "查询用户ID", required = false)
         private Long userId;
 
         @ToolParam(description = "记录日期，格式 yyyy-MM-dd", required = false)
@@ -97,14 +97,14 @@ public class BodyMetricsTool {
         @ToolParam(description = "疲劳度：低/中/高", required = false)
         private String fatigueLevel;
 
-        @ToolParam(description = "摘要关键词", required = false)
+        @ToolParam(description = "体测摘要关键字", required = false)
         private String summaryKeyword;
 
         @ToolParam(description = "排序方式：asc/desc", required = false)
         private ListSortEnum sortEnum;
     }
 
-    @Tool(description = "按条件查询身体指标记录")
+    @Tool(description = "按条件查询身体指标记录列表")
     public List<BodyMetrics> queryBodyMetrics(QueryBodyMetricsRequest request) {
         log.info("调用MCP工具：queryBodyMetrics");
         log.info("身体指标查询参数 request：{}", request);
@@ -143,29 +143,29 @@ public class BodyMetricsTool {
         @ToolParam(description = "身体指标记录ID")
         private Long id;
 
-        @ToolParam(description = "记录日期，格式 yyyy-MM-dd", required = false)
+        @ToolParam(description = "修改后的记录日期，格式 yyyy-MM-dd", required = false)
         private String recordDate;
 
-        @ToolParam(description = "体重kg", required = false)
+        @ToolParam(description = "修改后的体重数据，单位kg", required = false)
         private BigDecimal weight;
 
-        @ToolParam(description = "体脂率%", required = false)
+        @ToolParam(description = "修改后的体脂率数据，单位%", required = false)
         private BigDecimal bodyFat;
 
-        @ToolParam(description = "睡眠时长h", required = false)
+        @ToolParam(description = "修改后的睡眠时长，单位h", required = false)
         private BigDecimal sleepHours;
 
-        @ToolParam(description = "疲劳度：低/中/高", required = false)
+        @ToolParam(description = "修改后的疲劳度：低/中/高", required = false)
         private String fatigueLevel;
 
-        @ToolParam(description = "备注", required = false)
+        @ToolParam(description = "修改后的体测备注", required = false)
         private String note;
 
-        @ToolParam(description = "摘要", required = false)
+        @ToolParam(description = "修改后的体测摘要", required = false)
         private String summary;
     }
 
-    @Tool(description = "根据身体指标记录ID修改身体指标")
+    @Tool(description = "根据身体指标记录ID修改记录内容")
     public String modifyBodyMetrics(ModifyBodyMetricsRequest request) {
         log.info("调用MCP工具：modifyBodyMetrics");
         log.info("身体指标修改参数 request：{}", request);
@@ -204,8 +204,10 @@ public class BodyMetricsTool {
         return update > 0 ? "身体指标更新成功" : "身体指标更新失败，或记录不存在";
     }
 
-    @Tool(description = "根据身体指标记录ID删除身体指标")
-    public String deleteBodyMetrics(Long id) {
+    @Tool(description = "根据身体指标记录ID删除对应记录")
+    public String deleteBodyMetrics(
+            @ToolParam(description = "身体指标记录ID") Long id
+    ) {
         log.info("调用MCP工具：deleteBodyMetrics, id={}", id);
 
         if (id == null) {
