@@ -77,6 +77,9 @@ public class PromptTemplateManager {
             请回答用户的健身相关问题，保持专业、友好、简洁。
             如果涉及伤病、特殊人群、药物补剂，建议咨询专业人士。
 
+            ## 用户上下文
+            {userContext}
+            
             ## 当前日期
             {currentDate}
 
@@ -271,9 +274,10 @@ public class PromptTemplateManager {
     /**
      * 构建普通 Chat 提示词（无用户上下文）
      */
-    public String buildChatPrompt(String question) {
+    public String buildChatPrompt(String userContext, String question) {
         String currentDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy年MM月dd日"));
         return CHAT_PROMPT_TEMPLATE
+                .replace("{userContext}", userContext != null ? userContext : "暂无用户上下文")
                 .replace("{currentDate}", currentDate)
                 .replace("{question}", question);
     }

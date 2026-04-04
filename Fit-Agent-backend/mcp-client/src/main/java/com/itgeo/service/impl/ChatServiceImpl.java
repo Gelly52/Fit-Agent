@@ -155,7 +155,28 @@ public class ChatServiceImpl implements ChatService {
                 "chat",
                 sourceType
         );
-        String prompt = chatEntity.getMessage();
+
+        // 1. 查询用户最近训练数据（最近14天）
+        LocalDate fourteenDaysAgo = LocalDate.now().minusDays(14);
+        QueryWrapper<TrainingLog> trainingQuery = new QueryWrapper<>();
+        trainingQuery.eq("user_id", authenticatedUser.getUserId())
+                .ge("training_date", fourteenDaysAgo)
+                .orderByDesc("training_date");
+        List<TrainingLog> recentLogs = trainingLogMapper.selectList(trainingQuery);
+
+        // 2. 查询最新身体指标
+        QueryWrapper<BodyMetrics> metricsQuery = new QueryWrapper<>();
+        metricsQuery.eq("user_id", authenticatedUser.getUserId())
+                .orderByDesc("record_date")
+                .last("LIMIT 1");
+        BodyMetrics latestMetrics = bodyMetricsMapper.selectOne(metricsQuery);
+
+        // 3. 构建用户上下文 + 最终提示词
+        String userContext = promptTemplateManager.buildUserContext(
+                authenticatedUser.getUserId(), recentLogs, latestMetrics);
+        String finalPrompt = promptTemplateManager.buildChatPrompt(userContext, chatEntity.getMessage());
+
+        Prompt prompt = new Prompt(finalPrompt);
         String botMsgId = chatEntity.getBotMsgId();
         Flux<String> stringFlux = chatClient.prompt(prompt).stream().content();
         return streamAndSend(
@@ -669,7 +690,7 @@ public class ChatServiceImpl implements ChatService {
             return promptTemplateManager.buildAgentPrompt(userContext, question);
         } else {
             // Chat 模式：简单对话
-            return promptTemplateManager.buildChatPrompt(question);
+            return promptTemplateManager.buildChatPrompt(null, question);
         }
     }
 
