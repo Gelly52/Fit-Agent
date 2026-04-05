@@ -312,6 +312,7 @@ public class ChatServiceImpl implements ChatService {
         );
         Prompt prompt = new Prompt(finalPrompt);
         String botMsgId = chatEntity.getBotMsgId();
+
         Flux<String> stringFlux = chatClient.prompt(prompt).stream().content();
 
         return streamAndSend(
