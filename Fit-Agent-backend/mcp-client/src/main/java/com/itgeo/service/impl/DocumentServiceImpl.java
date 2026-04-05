@@ -8,6 +8,8 @@ import com.itgeo.bean.rag.RagSearchResult;
 import com.itgeo.config.RagEmbeddingProperties;
 import com.itgeo.mapper.RagDocumentMapper;
 
+import com.itgeo.parser.DocumentParser;
+import com.itgeo.parser.DocumentParserFactory;
 import com.itgeo.pojo.RagDocument;
 import com.itgeo.service.DocumentService;
 import com.itgeo.service.KeywordSearchService;
@@ -23,8 +25,14 @@ import org.springframework.ai.vectorstore.redis.RedisVectorStore;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -50,6 +58,8 @@ public class DocumentServiceImpl implements DocumentService {
 
     private final SemanticDocumentChunker semanticDocumentChunker;
 
+    private final DocumentParserFactory documentParserFactory;
+
     private final RagEmbeddingProperties ragEmbeddingProperties;
 
     private final KeywordSearchService keywordSearchService;
@@ -66,27 +76,41 @@ public class DocumentServiceImpl implements DocumentService {
         if (userId == null) {
             throw new IllegalArgumentException("userId不能为空");
         }
-
-        /*
-         * 入库步骤：
-         * 1. 先把 `fileName`、`userId` 写入原始文档 metadata，确保后续切分链路继承文档归属信息；
-         * 2. 调用 `SemanticDocumentChunker` 生成适合向量检索的 chunk；
-         * 3. 为每个 chunk 再次补齐 `fileName`、`userId` 与 `source`，保证向量库检索与来源展示字段完整；
-         * 4. 调用 `RedisVectorStore.add(...)` 写入向量索引；
-         * 5. 最后把文件级入库结果写入 `t_rag_document`，供文档列表与运维排查使用。
-         */
+        if (resource == null) {
+            throw new IllegalArgumentException("上传资源不能为空");
+        }
 
         String safeFileName = (fileName == null || fileName.isBlank()) ? "unknown" : fileName;
+        if (!documentParserFactory.isSupported(safeFileName)) {
+            throw new IllegalArgumentException("不支持的文件格式: " + safeFileName);
+        }
+
         String metadataUserId = String.valueOf(userId);
+        String fileType = extractExtension(safeFileName);
+        String parsedText = parseToText(resource, safeFileName);
 
-        TextReader reader = new TextReader(resource);
-        reader.getCustomMetadata().put("fileName", safeFileName);
-        reader.getCustomMetadata().put("userId", metadataUserId);
+        if (parsedText == null || parsedText.isBlank()) {
+            throw new IllegalArgumentException("文档解析结果为空，无法入库: " + safeFileName);
+        }
 
-        List<Document> documentList = reader.get();
+        String normalizedText = normalizeText(parsedText);
+        if (normalizedText.isBlank()) {
+            throw new IllegalArgumentException("文档内容为空，无法入库: " + safeFileName);
+        }
+
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("fileName", safeFileName);
+        metadata.put("userId", metadataUserId);
+        metadata.put("source", safeFileName);
+        metadata.put("fileType", fileType);
+
+        List<Document> documentList = List.of(new Document(normalizedText, metadata));
         List<Document> splitDocuments = semanticDocumentChunker.splitDocuments(documentList);
 
-        //
+        if (splitDocuments == null || splitDocuments.isEmpty()) {
+            throw new IllegalArgumentException("文档切分后结果为空，无法入库: " + safeFileName);
+        }
+
         RagDocument ragDocument = new RagDocument();
         ragDocument.setUserId(userId);
         ragDocument.setFileName(safeFileName);
@@ -97,7 +121,6 @@ public class DocumentServiceImpl implements DocumentService {
 
         String documentId = String.valueOf(ragDocument.getId());
 
-
         for (int i = 0; i < splitDocuments.size(); i++) {
             Document document = splitDocuments.get(i);
             String chunkId = documentId + ":" + i;
@@ -105,6 +128,7 @@ public class DocumentServiceImpl implements DocumentService {
             document.getMetadata().put("fileName", safeFileName);
             document.getMetadata().put("userId", metadataUserId);
             document.getMetadata().put("source", safeFileName);
+            document.getMetadata().put("fileType", fileType);
             document.getMetadata().put("documentId", documentId);
             document.getMetadata().put("chunkId", chunkId);
             document.getMetadata().put("chunkSeq", i);
@@ -113,13 +137,74 @@ public class DocumentServiceImpl implements DocumentService {
         redisVectorStore.add(splitDocuments);
         keywordSearchService.indexChunks(splitDocuments);
 
-        log.info("RAG文档入库完成, userId={}, fileName={}, sourceCount={}, chunkCount={}",
+        log.info("RAG文档入库完成, userId={}, fileName={}, fileType={}, sourceCount={}, chunkCount={}",
                 userId,
                 safeFileName,
+                fileType,
                 documentList.size(),
                 splitDocuments.size());
+
         return documentList;
     }
+//    @Override
+//    public List<Document> loadText(Resource resource, String fileName, Long userId) {
+//        if (userId == null) {
+//            throw new IllegalArgumentException("userId不能为空");
+//        }
+//
+//        /*
+//         * 入库步骤：
+//         * 1. 先把 `fileName`、`userId` 写入原始文档 metadata，确保后续切分链路继承文档归属信息；
+//         * 2. 调用 `SemanticDocumentChunker` 生成适合向量检索的 chunk；
+//         * 3. 为每个 chunk 再次补齐 `fileName`、`userId` 与 `source`，保证向量库检索与来源展示字段完整；
+//         * 4. 调用 `RedisVectorStore.add(...)` 写入向量索引；
+//         * 5. 最后把文件级入库结果写入 `t_rag_document`，供文档列表与运维排查使用。
+//         */
+//
+//        String safeFileName = (fileName == null || fileName.isBlank()) ? "unknown" : fileName;
+//        String metadataUserId = String.valueOf(userId);
+//
+//        TextReader reader = new TextReader(resource);
+//        reader.getCustomMetadata().put("fileName", safeFileName);
+//        reader.getCustomMetadata().put("userId", metadataUserId);
+//
+//        List<Document> documentList = reader.get();
+//        List<Document> splitDocuments = semanticDocumentChunker.splitDocuments(documentList);
+//
+//        //
+//        RagDocument ragDocument = new RagDocument();
+//        ragDocument.setUserId(userId);
+//        ragDocument.setFileName(safeFileName);
+//        ragDocument.setSourceCount(documentList.size());
+//        ragDocument.setChunkCount(splitDocuments.size());
+//        ragDocument.setStatus("READY");
+//        ragDocumentMapper.insert(ragDocument);
+//
+//        String documentId = String.valueOf(ragDocument.getId());
+//
+//
+//        for (int i = 0; i < splitDocuments.size(); i++) {
+//            Document document = splitDocuments.get(i);
+//            String chunkId = documentId + ":" + i;
+//
+//            document.getMetadata().put("fileName", safeFileName);
+//            document.getMetadata().put("userId", metadataUserId);
+//            document.getMetadata().put("source", safeFileName);
+//            document.getMetadata().put("documentId", documentId);
+//            document.getMetadata().put("chunkId", chunkId);
+//            document.getMetadata().put("chunkSeq", i);
+//        }
+//
+//        redisVectorStore.add(splitDocuments);
+//        keywordSearchService.indexChunks(splitDocuments);
+//
+//        log.info("RAG文档入库完成, userId={}, fileName={}, sourceCount={}, chunkCount={}",
+//                userId,
+//                safeFileName,
+//                documentList.size(),
+//                splitDocuments.size());
+//        return documentList;
+//    }
 
     /**
      * 基于问题检索当前用户可见的 RAG 文档片段。
@@ -346,5 +431,42 @@ public class DocumentServiceImpl implements DocumentService {
             return finalTopK;
         }
         return Math.max(configured, finalTopK);
+    }
+
+    private String parseToText(Resource resource, String fileName) {
+        Path tempFile = null;
+        try (InputStream inputStream = resource.getInputStream()) {
+            String extension = extractExtension(fileName);
+            tempFile = Files.createTempFile("rag-upload-", "." + extension);
+            Files.copy(inputStream, tempFile, StandardCopyOption.REPLACE_EXISTING);
+
+            DocumentParser parser = documentParserFactory.getParser(fileName);
+            return parser.parse(tempFile.toAbsolutePath().toString());
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("文档解析失败, fileName={}", fileName, e);
+            throw new IllegalArgumentException("文档解析失败: " + fileName);
+        } finally {
+            if (tempFile != null) {
+                try {
+                    Files.deleteIfExists(tempFile);
+                } catch (Exception e) {
+                    log.warn("临时文件删除失败, path={}", tempFile, e);
+                }
+            }
+        }
+    }
+
+    private String extractExtension(String fileName) {
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex == -1 || dotIndex == fileName.length() - 1) {
+            throw new IllegalArgumentException("文件名缺少扩展名: " + fileName);
+        }
+        return fileName.substring(dotIndex + 1).toLowerCase();
+    }
+
+    private String normalizeText(String text) {
+        return text.replace("\r\n", "\n").trim();
     }
 }

@@ -44,7 +44,7 @@ public class PromptTemplateManager {
             ## 工具使用
             - 记录训练: createTrainingLog（确认日期、摘要、肌群）
             - 查看历史: queryTrainingLogs（userId + 时间范围，倒序）
-            - 分析进展: 先查询至少14天数据 → 分析频率/肌群分布 → 给建议
+            - 分析进展: 先调用 queryTrainingLogs 查询至少14天数据，再分析频率/肌群分布并给出建议
             - 记录体测: createBodyMetrics（至少一项指标）
             - 查看趋势: queryBodyMetrics（时间段 + 计算变化）
 

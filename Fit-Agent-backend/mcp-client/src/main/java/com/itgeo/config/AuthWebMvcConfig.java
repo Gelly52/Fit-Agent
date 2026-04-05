@@ -1,4 +1,4 @@
-package com.itgeo;
+package com.itgeo.config;
 
 import com.itgeo.auth.TokenAuthInterceptor;
 import jakarta.annotation.Resource;

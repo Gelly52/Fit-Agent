@@ -1,4 +1,4 @@
-package com.itgeo;
+package com.itgeo.config;
 
 import okhttp3.OkHttpClient;
 import org.springframework.context.annotation.Bean;

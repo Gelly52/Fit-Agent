@@ -5,6 +5,7 @@ import com.itgeo.auth.UserContextHolder;
 import com.itgeo.bean.ChatEntity;
 import com.itgeo.bean.ChatResponseEntity;
 import com.itgeo.bean.rag.RagBenchmarkEvaluateRequest;
+import com.itgeo.parser.DocumentParserFactory;
 import com.itgeo.service.ChatService;
 import com.itgeo.service.DocumentService;
 import com.itgeo.service.RagBenchmarkService;
@@ -43,19 +44,53 @@ public class RagController {
     @Resource
     private RagBenchmarkService ragBenchmarkService;
 
+    @Resource
+    private DocumentParserFactory documentParserFactory;
+
     /**
      * 上传当前用户自己的 RAG 文档。
      */
     @PostMapping("/uploadRagDoc")
     public LeeResult uploadRagDoc(@RequestParam("file") MultipartFile file) {
-        Long userId = UserContextHolder.getRequired().getUserId();
-        List<Document> documentList = documentService.loadText(
-                file.getResource(),
-                file.getOriginalFilename(),
-                userId
-        );
-        return LeeResult.ok(documentList);
+        try {
+            if (file == null || file.isEmpty()) {
+                return LeeResult.errorMsg("上传文件不能为空");
+            }
+
+            String fileName = file.getOriginalFilename();
+            if (fileName == null || fileName.isBlank()) {
+                return LeeResult.errorMsg("文件名不能为空");
+            }
+
+            if (!documentParserFactory.isSupported(fileName)) {
+                return LeeResult.errorMsg("不支持的文件格式，当前仅支持: "
+                        + String.join(", ", documentParserFactory.getSupportedExtensions()));
+            }
+
+            Long userId = UserContextHolder.getRequired().getUserId();
+            List<Document> documentList = documentService.loadText(
+                    file.getResource(),
+                    fileName,
+                    userId
+            );
+            return LeeResult.ok(documentList);
+        } catch (IllegalArgumentException e) {
+            return LeeResult.errorMsg(e.getMessage());
+        } catch (Exception e) {
+            log.error("RAG文档上传失败", e);
+            return LeeResult.errorException("RAG文档上传失败");
+        }
     }
+//    @PostMapping("/uploadRagDoc")
+//    public LeeResult uploadRagDoc(@RequestParam("file") MultipartFile file) {
+//        Long userId = UserContextHolder.getRequired().getUserId();
+//        List<Document> documentList = documentService.loadText(
+//                file.getResource(),
+//                file.getOriginalFilename(),
+//                userId
+//        );
+//        return LeeResult.ok(documentList);
+//    }
 
     /**
      * 手动检索当前用户的 RAG 文档片段。

@@ -19,7 +19,7 @@ import java.util.List;
 public interface DocumentService {
 
     /**
-     * 读取文本文件、补齐 metadata、切分文档并写入向量库。
+     * 读取上传文件、解析多种格式为纯文本、补齐 metadata、切分文档并写入向量库。
      *
      * @param resource 文本文件资源
      * @param fileName 文件名
