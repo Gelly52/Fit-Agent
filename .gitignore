@@ -9,6 +9,8 @@
 *.ipr
 .vscode/
 .claude/
+.claude-codebase/
+.worktrees/
 .DS_Store
 
 HELP.md
