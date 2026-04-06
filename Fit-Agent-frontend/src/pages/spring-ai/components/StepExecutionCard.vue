@@ -42,7 +42,6 @@
         </div>
         <div class="step-content">
           <span class="step-label">{{ resolveStepLabel(step) }}</span>
-          <span class="step-status-text">{{ stepStatusText(step) }}</span>
         </div>
       </div>
     </div>
@@ -153,13 +152,6 @@ export default {
         "step-pending": status === "pending",
         "step-failed": status === "failed",
       };
-    },
-    stepStatusText(step) {
-      var status = this.normalizeStepStatus(step);
-      if (status === "completed") return "已完成";
-      if (status === "running") return "执行中";
-      if (status === "failed") return "失败";
-      return "等待中";
     },
     completedStepCount() {
       var count = 0;

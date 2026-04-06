@@ -753,6 +753,10 @@ body::after {
   padding-right: 28px;
 }
 
+.console-main .chat-messages > .step-execution-card {
+  width: min(100%, 620px);
+}
+
 .console-main .chat-input-container {
   border: none;
   background: transparent;
@@ -1607,9 +1611,7 @@ body::after {
 
 /* ===== Step Execution Card ===== */
 .step-execution-card {
-  position: sticky;
-  top: 16px;
-  z-index: 8;
+  position: relative;
   background: linear-gradient(
     180deg,
     rgba(15, 23, 42, 0.92) 0%,
@@ -1619,9 +1621,10 @@ body::after {
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid rgba(var(--console-accent-rgb), 0.16);
   border-radius: var(--console-radius-md);
-  padding: 16px 18px;
-  margin: 8px 0 16px 0;
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.28);
+  padding: 12px 14px;
+  margin: 8px auto 14px;
+  max-width: 620px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
 }
 
 .step-card-active {
@@ -1683,18 +1686,18 @@ body::after {
 .step-timeline {
   display: flex;
   align-items: stretch;
-  gap: 12px;
+  gap: 8px;
   overflow-x: auto;
-  padding: 16px 0 6px;
+  padding: 12px 0 4px;
   margin-top: 2px;
 }
 
 .step-item {
-  min-width: 116px;
-  flex: 1 0 116px;
+  min-width: 92px;
+  flex: 1 0 92px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .step-indicator {
@@ -1725,7 +1728,7 @@ body::after {
 .step-content {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
   min-width: 0;
 }
 
@@ -1733,12 +1736,7 @@ body::after {
   font-size: 12px;
   color: var(--console-text);
   font-weight: 600;
-  line-height: 1.45;
-}
-
-.step-status-text {
-  font-size: 11px;
-  color: var(--console-text-muted);
+  line-height: 1.4;
 }
 
 .step-thinking {
@@ -1830,10 +1828,6 @@ body::after {
   color: var(--console-text-secondary);
 }
 
-.step-completed .step-status-text {
-  color: var(--console-success);
-}
-
 .step-running .step-dot {
   background: var(--console-accent);
   border-color: var(--console-accent);
@@ -1841,8 +1835,7 @@ body::after {
   animation: pulseGlow 1.5s ease-in-out infinite;
 }
 
-.step-running .step-label,
-.step-running .step-status-text {
+.step-running .step-label {
   color: var(--console-accent);
 }
 
@@ -1853,10 +1846,6 @@ body::after {
 
 .step-failed .step-line {
   background: rgba(239, 68, 68, 0.18);
-}
-
-.step-failed .step-status-text {
-  color: var(--console-danger);
 }
 
 [data-theme="light"] .step-execution-card {
@@ -1890,8 +1879,8 @@ body::after {
 
 @media (max-width: 768px) {
   .step-execution-card {
-    top: 8px;
-    padding: 14px;
+    padding: 12px;
+    max-width: 100%;
   }
 
   .step-card-header,
