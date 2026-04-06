@@ -102,6 +102,10 @@
           :is-mobile-viewport="false"
           :mobile-info-expanded="true"
           :agent-steps="agentSteps"
+          :thinking-content="thinkingContent"
+          :is-thinking="isThinking"
+          :thinking-expanded="thinkingExpanded"
+          @toggle-thinking="toggleThinkingExpanded"
           @chat-scroll="handleChatScroll"
           @copy-message="copyMessageContent"
           @quote-message="quoteMessageToInput"
@@ -326,6 +330,9 @@ export default {
       reportContent: "",
       knowledgeSources: [],
       agentSteps: [],
+      thinkingContent: "",
+      isThinking: false,
+      thinkingExpanded: true,
       docCount: 0,
       uploadSynced: false,
       uploadedDocs: [],
@@ -491,6 +498,7 @@ export default {
       );
 
       this.clearActiveAgentRun();
+      this.clearThinkingState();
       this.activeView = "chat";
       this.activeChatSessionId = targetSession.sessionId;
       this.currentSessionCode = targetSession.sessionCode || null;
@@ -511,6 +519,7 @@ export default {
       }
 
       this.clearActiveAgentRun();
+      this.clearThinkingState();
       this.activeView = "chat";
       this.activeChatSessionId = null;
       this.currentSessionCode = null;
@@ -1325,6 +1334,9 @@ export default {
           sourceType: parsed.sourceType
             ? String(parsed.sourceType).toLowerCase()
             : null,
+          chunkType: parsed.chunkType
+            ? String(parsed.chunkType).toLowerCase()
+            : null,
         };
       }
       return {
@@ -1335,10 +1347,78 @@ export default {
         sessionCode: null,
         sceneType: null,
         sourceType: null,
+        chunkType: null,
       };
+    },
+    handleThinkingEvent(rawValue) {
+      var payload = this.normalizeAddPayload(rawValue);
+      if (!payload) {
+        return;
+      }
+      if (
+        payload.runId != null &&
+        this.activeAgentRun &&
+        this.activeAgentRun.runId != null &&
+        String(payload.runId) !== String(this.activeAgentRun.runId)
+      ) {
+        return;
+      }
+      if (payload.chunkType && payload.chunkType !== "thinking") {
+        return;
+      }
+      var thinkingText =
+        payload.chunkText == null ? "" : String(payload.chunkText);
+      if (!thinkingText) {
+        return;
+      }
+      this.thinkingContent = (this.thinkingContent || "") + thinkingText;
+      this.isThinking = true;
+      if (payload.botMsgId) {
+        this.botMsgId = payload.botMsgId;
+      }
+      this.applyServerSessionMeta(
+        {
+          chatSessionId: payload.chatSessionId,
+          sessionCode: payload.sessionCode,
+          sceneType:
+            payload.sceneType ||
+            this.currentSessionSceneType ||
+            this.resolveExpectedSessionSceneType(),
+        },
+        payload.sceneType ||
+          this.currentSessionSceneType ||
+          this.resolveExpectedSessionSceneType()
+      );
+      if (this.activeAgentRun) {
+        if (payload.runId != null) {
+          this.activeAgentRun.runId = payload.runId;
+        }
+        if (payload.chatSessionId != null) {
+          this.activeAgentRun.chatSessionId = payload.chatSessionId;
+        }
+        if (payload.sessionCode) {
+          this.activeAgentRun.sessionCode = payload.sessionCode;
+        }
+        if (payload.botMsgId) {
+          this.activeAgentRun.botMsgId = payload.botMsgId;
+        }
+        this.snapshotActiveAgentRun();
+      }
+      this.scrollToBottom();
+    },
+    clearThinkingState() {
+      this.thinkingContent = "";
+      this.isThinking = false;
+      this.thinkingExpanded = true;
+    },
+    toggleThinkingExpanded() {
+      this.thinkingExpanded = !this.thinkingExpanded;
     },
     upsertStreamingBotMessage(payload) {
       if (!payload) {
+        return;
+      }
+      if (payload.chunkType && payload.chunkType !== "content") {
         return;
       }
       if (
@@ -1800,10 +1880,22 @@ export default {
               me.guidanceMessage = "SSE 已连接，可开始执行任务。";
               settle(connection);
             },
+            onThinking: function (event) {
+              console.log("thinking事件...");
+              console.log(event && event.data);
+              me.handleThinkingEvent(event && event.data);
+            },
             onAdd: function (event) {
               var payload = me.normalizeAddPayload(
                 event && event.data != null ? event.data : ""
               );
+              if (
+                payload &&
+                payload.chunkType &&
+                payload.chunkType !== "content"
+              ) {
+                return;
+              }
               me.upsertStreamingBotMessage(payload);
             },
             onFinish: function (event) {
@@ -1834,6 +1926,7 @@ export default {
                 me.isStreaming = false;
               }
 
+              me.isThinking = false;
               me.scrollToBottom();
             },
             onError: function (event, context) {
@@ -1872,6 +1965,7 @@ export default {
                 me.snapshotActiveAgentRun();
               }
 
+              me.clearThinkingState();
               me.botMsgId = null;
               me.isSending = false;
               me.isStreaming = false;
@@ -2385,6 +2479,7 @@ export default {
       if (pendingMsg === "") {
         return;
       }
+      this.clearThinkingState();
 
       this.isSending = true;
       this.isStreaming = false;
@@ -2486,6 +2581,7 @@ export default {
             this.botMsgId = null;
             this.isSending = false;
             this.isStreaming = false;
+            this.clearThinkingState();
             this.guidanceMessage = "任务发送失败，请稍后重试。";
             this.failCurrentAgentStep();
           }.bind(this)

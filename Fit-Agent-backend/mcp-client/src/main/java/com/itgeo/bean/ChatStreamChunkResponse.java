@@ -27,4 +27,9 @@ public class ChatStreamChunkResponse {
     private String sceneType;
     /** 当前轮来源类型。 */
     private String sourceType;
+    /**
+     * 内容分片类型：content（正式回答）/ thinking（思考过程）
+     * 前端根据此字段决定渲染样式
+     */
+    private String chunkType;
 }

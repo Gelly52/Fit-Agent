@@ -21,6 +21,7 @@ import com.itgeo.service.DocumentService;
 import com.itgeo.service.SearXngService;
 import com.itgeo.utils.SSEServer;
 import jakarta.annotation.Resource;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -75,6 +76,153 @@ public class ChatServiceImpl implements ChatService {
     private static class EnhancementData {
         private List<Document> ragContext;
         private List<SearchResult> searchResults;
+    }
+
+    /**
+     * 流式内容解析器
+     * 负责解析模型输出中的 <thinking></thinking> 标签，将内容分类为思考过程和正式回答
+     */
+    private static class StreamContentParser {
+
+        /** 解析状态：NORMAL-正常内容，IN_THINKING-思考标签内 */
+        private enum ParseState {
+            NORMAL,
+            IN_THINKING
+        }
+
+        private ParseState state = ParseState.NORMAL;
+        private StringBuilder buffer = new StringBuilder();
+        private StringBuilder thinkingContent = new StringBuilder();
+        private StringBuilder normalContent = new StringBuilder();
+
+        // 标签定义
+        private static final String THINKING_START = "<thinking>";
+        private static final String THINKING_END = "</thinking>";
+
+        /**
+         * 解析结果
+         */
+        @Data
+        @AllArgsConstructor
+        public static class ParseResult {
+            /** 思考内容片段（可能为空） */
+            private String thinkingChunk;
+            /** 正式回答片段（可能为空） */
+            private String contentChunk;
+        }
+
+        /**
+         * 处理流式输入的一个片段，返回解析结果
+         *
+         * @param chunk 模型输出的一个片段
+         * @return 解析结果，包含分类后的思考内容和正式内容
+         */
+        public ParseResult process(String chunk) {
+            if (chunk == null || chunk.isEmpty()) {
+                return new ParseResult("", "");
+            }
+
+            buffer.append(chunk);
+            String thinkingOut = "";
+            String contentOut = "";
+
+            while (buffer.length() > 0) {
+                if (state == ParseState.NORMAL) {
+                    // 查找 <thinking> 开始标签
+                    int startIdx = buffer.indexOf(THINKING_START);
+                    if (startIdx == -1) {
+                        // 没有找到开始标签
+                        // 但要保留可能是标签前缀的部分（如 "<thin"）
+                        int safeLength = Math.max(0, buffer.length() - THINKING_START.length() + 1);
+                        if (safeLength > 0) {
+                            contentOut += buffer.substring(0, safeLength);
+                            buffer.delete(0, safeLength);
+                        }
+                        break;
+                    } else {
+                        // 找到了开始标签
+                        // 标签之前的内容是正式回答
+                        if (startIdx > 0) {
+                            contentOut += buffer.substring(0, startIdx);
+                        }
+                        // 移除开始标签，进入思考状态
+                        buffer.delete(0, startIdx + THINKING_START.length());
+                        state = ParseState.IN_THINKING;
+                    }
+                } else {
+                    // IN_THINKING 状态，查找 </thinking> 结束标签
+                    int endIdx = buffer.indexOf(THINKING_END);
+                    if (endIdx == -1) {
+                        // 没有找到结束标签
+                        // 保留可能是标签前缀的部分
+                        int safeLength = Math.max(0, buffer.length() - THINKING_END.length() + 1);
+                        if (safeLength > 0) {
+                            thinkingOut += buffer.substring(0, safeLength);
+                            buffer.delete(0, safeLength);
+                        }
+                        break;
+                    } else {
+                        // 找到了结束标签
+                        // 标签之前的内容是思考内容
+                        if (endIdx > 0) {
+                            thinkingOut += buffer.substring(0, endIdx);
+                        }
+                        // 移除结束标签，回到正常状态
+                        buffer.delete(0, endIdx + THINKING_END.length());
+                        state = ParseState.NORMAL;
+                    }
+                }
+            }
+
+            // 累积完整内容（用于最终存储）
+            thinkingContent.append(thinkingOut);
+            normalContent.append(contentOut);
+
+            return new ParseResult(thinkingOut, contentOut);
+        }
+
+        /**
+         * 流结束时，冲刷缓冲区中剩余的内容
+         */
+        public ParseResult flush() {
+            String remaining = buffer.toString();
+            buffer.setLength(0);
+
+            if (state == ParseState.IN_THINKING) {
+                thinkingContent.append(remaining);
+                return new ParseResult(remaining, "");
+            } else {
+                normalContent.append(remaining);
+                return new ParseResult("", remaining);
+            }
+        }
+
+        /**
+         * 获取完整的思考内容
+         */
+        public String getFullThinkingContent() {
+            return thinkingContent.toString();
+        }
+
+        /**
+         * 获取完整的正式回答内容
+         */
+        public String getFullNormalContent() {
+            return normalContent.toString();
+        }
+
+        /**
+         * 获取完整的原始内容（思考 + 回答）
+         */
+        public String getFullRawContent() {
+            // 重建原始内容，用于存储
+            StringBuilder raw = new StringBuilder();
+            if (thinkingContent.length() > 0) {
+                raw.append(THINKING_START).append(thinkingContent).append(THINKING_END);
+            }
+            raw.append(normalContent);
+            return raw.toString();
+        }
     }
 
     /**
@@ -485,7 +633,7 @@ public class ChatServiceImpl implements ChatService {
      * 消费模型返回的流式分片，并同步推送到 SSE。
      * <p>
      * 处理步骤：
-     * 1. 逐片消费模型输出，并按 ADD 事件实时推送给前端；
+     * 1. 逐片消费模型输出，解析 thinking 标签，分类推送 THINKING 或 ADD 事件；
      * 2. 汇总完整回答后，回填 assistant 占位消息内容与来源；
      * 3. 组装最终响应对象，补齐会话、运行与来源元数据；
      * 4. 在连接可用时发送 FINISH 事件，通知前端本轮输出结束。
@@ -501,35 +649,106 @@ public class ChatServiceImpl implements ChatService {
                                              String sourceType,
                                              Object sources) {
         String sseClientId = authenticatedUser == null ? null : authenticatedUser.getSseClientId();
+        final int[] chunkCount = {0};
 
-        // 1. 逐片消费模型输出，并实时推送 ADD 事件
-        List<String> chunks = stringFlux.toStream().map(chunk -> {
+        // 创建流式内容解析器
+        StreamContentParser parser = new StreamContentParser();
+
+        // 1. 逐片消费模型输出，解析 thinking 标签，分类推送事件
+        stringFlux.toStream().forEach(chunk -> {
             String content = chunk == null ? "" : chunk;
-            if (StrUtil.isNotBlank(sseClientId) && !content.isEmpty()) {
+            if (content.isEmpty()) {
+                return;
+            }
+
+            chunkCount[0]++;
+
+            if (chunkCount[0] <= 10) {
+                log.info("raw chunk preview, runId={}, botMsgId={}, chunkIndex={}, raw={}",
+                        runId, botMsgId, chunkCount[0], content);
+            }
+
+
+
+            // 解析内容，分离思考和正式回答
+            StreamContentParser.ParseResult result = parser.process(content);
+
+            if (StrUtil.isNotBlank(sseClientId)) {
+                // 推送思考内容（如果有）
+                if (StrUtil.isNotBlank(result.getThinkingChunk())) {
+                    ChatStreamChunkResponse thinkingEvent = new ChatStreamChunkResponse();
+                    thinkingEvent.setContentChunk(result.getThinkingChunk());
+                    thinkingEvent.setBotMsgId(botMsgId);
+                    thinkingEvent.setRunId(runId);
+                    thinkingEvent.setChatSessionId(chatSessionId);
+                    thinkingEvent.setSessionCode(sessionCode);
+                    thinkingEvent.setSceneType(sceneType);
+                    thinkingEvent.setSourceType(sourceType);
+                    thinkingEvent.setChunkType("thinking");
+
+                    SSEServer.sendMsg(sseClientId, JSONUtil.toJsonStr(thinkingEvent), SSEMsgType.THINKING);
+                }
+
+                // 推送正式回答内容（如果有）
+                if (StrUtil.isNotBlank(result.getContentChunk())) {
+                    ChatStreamChunkResponse addEvent = new ChatStreamChunkResponse();
+                    addEvent.setContentChunk(result.getContentChunk());
+                    addEvent.setBotMsgId(botMsgId);
+                    addEvent.setRunId(runId);
+                    addEvent.setChatSessionId(chatSessionId);
+                    addEvent.setSessionCode(sessionCode);
+                    addEvent.setSceneType(sceneType);
+                    addEvent.setSourceType(sourceType);
+                    addEvent.setChunkType("content");
+
+                    SSEServer.sendMsg(sseClientId, JSONUtil.toJsonStr(addEvent), SSEMsgType.ADD);
+                }
+            }
+
+            log.debug("chat chunk received, botMsgId={}, size={}", botMsgId, content.length());
+        });
+
+        // 2. 冲刷解析器缓冲区中的剩余内容
+        StreamContentParser.ParseResult flushResult = parser.flush();
+        if (StrUtil.isNotBlank(sseClientId)) {
+            if (StrUtil.isNotBlank(flushResult.getThinkingChunk())) {
+                ChatStreamChunkResponse thinkingEvent = new ChatStreamChunkResponse();
+                thinkingEvent.setContentChunk(flushResult.getThinkingChunk());
+                thinkingEvent.setBotMsgId(botMsgId);
+                thinkingEvent.setRunId(runId);
+                thinkingEvent.setChatSessionId(chatSessionId);
+                thinkingEvent.setSessionCode(sessionCode);
+                thinkingEvent.setSceneType(sceneType);
+                thinkingEvent.setSourceType(sourceType);
+                thinkingEvent.setChunkType("thinking");
+
+                SSEServer.sendMsg(sseClientId, JSONUtil.toJsonStr(thinkingEvent), SSEMsgType.THINKING);
+            }
+            if (StrUtil.isNotBlank(flushResult.getContentChunk())) {
                 ChatStreamChunkResponse addEvent = new ChatStreamChunkResponse();
-                addEvent.setContentChunk(content);
+                addEvent.setContentChunk(flushResult.getContentChunk());
                 addEvent.setBotMsgId(botMsgId);
                 addEvent.setRunId(runId);
                 addEvent.setChatSessionId(chatSessionId);
                 addEvent.setSessionCode(sessionCode);
                 addEvent.setSceneType(sceneType);
                 addEvent.setSourceType(sourceType);
+                addEvent.setChunkType("content");
 
                 SSEServer.sendMsg(sseClientId, JSONUtil.toJsonStr(addEvent), SSEMsgType.ADD);
             }
-            log.debug("chat chunk received, botMsgId={}, size={}", botMsgId, content.length());
-            return content;
-        }).collect(Collectors.toList());
+        }
 
-        // 2. 拼接完整回答，并把 assistant 占位消息回填为最终内容
-        String fullContent = String.join("", chunks);
+        // 3. 获取完整正式回答内容，回填 assistant 占位消息
+        // 存储时保留原始内容（包含 thinking 标签），便于历史记录查看
+        String fullContent = parser.getFullNormalContent();
         chatSessionService.finishAssistantMessage(
                 assistantMessageId,
                 fullContent,
                 sources == null ? null : JSONUtil.toJsonStr(sources)
         );
 
-        // 3. 组装 FINISH 响应体，补齐会话与来源元数据
+        // 4. 组装 FINISH 响应体，补齐会话与来源元数据
         ChatResponseEntity chatResponseEntity = new ChatResponseEntity();
         chatResponseEntity.setMessage(fullContent);
         chatResponseEntity.setBotMsgId(botMsgId);
@@ -540,7 +759,7 @@ public class ChatServiceImpl implements ChatService {
         chatResponseEntity.setSourceType(sourceType);
         chatResponseEntity.setSources(sources);
 
-        // 4. 推送 FINISH 事件
+        // 5. 推送 FINISH 事件
         if (StrUtil.isNotBlank(sseClientId)) {
             SSEServer.sendMsg(
                     sseClientId,
@@ -549,8 +768,8 @@ public class ChatServiceImpl implements ChatService {
             );
         }
 
-        log.info("chat stream finished, botMsgId={}, runId={}, contentLength={}",
-                botMsgId, runId, fullContent.length());
+        log.info("chat stream finished, botMsgId={}, runId={}, contentLength={}, thinkingLength={}",
+                botMsgId, runId, parser.getFullNormalContent().length(), parser.getFullThinkingContent().length());
         return chatResponseEntity;
     }
 

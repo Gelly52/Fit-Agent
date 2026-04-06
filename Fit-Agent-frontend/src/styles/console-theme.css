@@ -1607,14 +1607,41 @@ body::after {
 
 /* ===== Step Execution Card ===== */
 .step-execution-card {
-  background: var(--console-surface);
+  position: sticky;
+  top: 16px;
+  z-index: 8;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.92) 0%,
+    rgba(11, 17, 33, 0.9) 100%
+  );
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--console-border);
+  border: 1px solid rgba(var(--console-accent-rgb), 0.16);
   border-radius: var(--console-radius-md);
-  padding: 14px 16px;
+  padding: 16px 18px;
   margin: 8px 0 16px 0;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.28);
+}
+
+.step-card-active {
+  border-color: rgba(var(--console-accent-rgb), 0.28);
+  box-shadow: 0 18px 40px rgba(79, 124, 255, 0.18);
+}
+
+.step-card-collapsed {
+  padding-bottom: 14px;
+}
+
+.step-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.step-card-heading {
+  min-width: 0;
 }
 
 .step-card-title {
@@ -1623,31 +1650,62 @@ body::after {
   color: var(--console-text-muted);
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  margin: 0 0 12px 0;
+  margin: 0;
+}
+
+.step-card-summary {
+  margin: 6px 0 0 0;
+  color: var(--console-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.step-card-toggle {
+  flex-shrink: 0;
+  appearance: none;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--console-text);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.step-card-toggle:hover {
+  border-color: rgba(var(--console-accent-rgb), 0.28);
+  background: rgba(var(--console-accent-rgb), 0.12);
+  color: #dbe6ff;
 }
 
 .step-timeline {
   display: flex;
-  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 16px 0 6px;
+  margin-top: 2px;
 }
 
 .step-item {
+  min-width: 116px;
+  flex: 1 0 116px;
   display: flex;
-  gap: 12px;
-  min-height: 34px;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .step-indicator {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  width: 16px;
-  flex-shrink: 0;
+  width: 100%;
 }
 
 .step-dot {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   border: 2px solid var(--console-border);
   background: transparent;
@@ -1656,28 +1714,105 @@ body::after {
 }
 
 .step-line {
-  width: 2px;
+  height: 2px;
   flex: 1;
   background: var(--console-border);
-  margin: 2px 0;
+  margin-left: 8px;
+  border-radius: 999px;
   transition: background 0.3s ease;
 }
 
 .step-content {
   display: flex;
   flex-direction: column;
-  padding-bottom: 8px;
+  gap: 4px;
+  min-width: 0;
 }
 
 .step-label {
   font-size: 12px;
   color: var(--console-text);
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1.45;
 }
 
 .step-status-text {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--console-text-muted);
+}
+
+.step-thinking {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.step-thinking-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.step-thinking-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--console-text);
+}
+
+.step-thinking-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--console-text-muted);
+  text-align: right;
+}
+
+.step-thinking-body {
+  max-height: 240px;
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(
+    180deg,
+    rgba(19, 27, 46, 0.82) 0%,
+    rgba(11, 17, 33, 0.74) 100%
+  );
+  border: 1px solid rgba(var(--console-accent-rgb), 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.step-thinking-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.72;
+  color: var(--console-text-secondary);
+}
+
+.step-thinking-placeholder {
+  display: flex;
+  align-items: center;
+  color: var(--console-text-secondary);
+  font-size: 13px;
+}
+
+.step-thinking-collapsed {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  color: var(--console-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Step States */
@@ -1706,11 +1841,7 @@ body::after {
   animation: pulseGlow 1.5s ease-in-out infinite;
 }
 
-.step-running .step-label {
-  color: var(--console-accent);
-  font-weight: 600;
-}
-
+.step-running .step-label,
 .step-running .step-status-text {
   color: var(--console-accent);
 }
@@ -1720,8 +1851,68 @@ body::after {
   border-color: var(--console-danger);
 }
 
+.step-failed .step-line {
+  background: rgba(239, 68, 68, 0.18);
+}
+
 .step-failed .step-status-text {
   color: var(--console-danger);
+}
+
+[data-theme="light"] .step-execution-card {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(241, 245, 249, 0.95) 100%
+  );
+  border-color: rgba(var(--console-accent-rgb), 0.14);
+}
+
+[data-theme="light"] .step-card-summary,
+[data-theme="light"] .step-thinking-title {
+  color: #1e293b;
+}
+
+[data-theme="light"] .step-thinking-body {
+  background: linear-gradient(
+    180deg,
+    rgba(248, 250, 252, 0.98) 0%,
+    rgba(241, 245, 249, 0.96) 100%
+  );
+  border-color: rgba(var(--console-accent-rgb), 0.12);
+}
+
+[data-theme="light"] .step-thinking-content,
+[data-theme="light"] .step-thinking-placeholder,
+[data-theme="light"] .step-thinking-collapsed {
+  color: #475569;
+}
+
+@media (max-width: 768px) {
+  .step-execution-card {
+    top: 8px;
+    padding: 14px;
+  }
+
+  .step-card-header,
+  .step-thinking-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .step-card-toggle,
+  .step-thinking-meta {
+    align-self: flex-start;
+  }
+
+  .step-item {
+    min-width: 100px;
+    flex-basis: 100px;
+  }
+
+  .step-thinking-body {
+    max-height: 180px;
+  }
 }
 
 /* ===== Right Panel ===== */

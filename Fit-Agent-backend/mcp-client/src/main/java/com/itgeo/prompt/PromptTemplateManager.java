@@ -61,12 +61,44 @@ public class PromptTemplateManager {
 
             ## 当前日期
             {currentDate}
+            
+            {thinkingInstruction}
 
             ## 用户问题
             {question}
 
             回答要求: 简洁直接、基于数据、结构化呈现（表格/列表）。
+            你必须严格按以下格式输出，不能省略，不能变形，不能拼错标签：
+            <thinking>
+            这里写分析摘要(思考过程)
+            </thinking>
+            这里写正式回答
             """;
+
+    /**
+     * 思考过程输出指令
+     * 所有模板都需要包含此指令，引导模型输出结构化的思考过程
+     */
+    private static final String THINKING_INSTRUCTION = """
+
+             ## 思考过程输出要求
+             在回答问题时，请按以下格式组织你的输出：
+             1. 首先在 <thinking></thinking> 标签内写出你的思考过程，包括：
+                - 分析用户的真实意图
+                - 判断是否需要调用工具
+                - 如果需要调用工具，说明调用哪个工具、为什么
+                - 如果不需要工具，说明你的回答思路
+             2. 然后给出最终回答（不要包含在任何标签内）
+
+             示例格式：
+
+             <thinking>
+             用户询问最近的训练情况，我需要先调用 queryTrainingLogs 工具查询用户最近14天的训练数据，
+             然后基于数据分析训练频率和肌群分布，给出客观的评价和建议。
+             </thinking>
+             根据您最近14天的训练数据，您一共训练了8次...
+             """;
+
 
     /**
      * 普通 Chat 提示词（无用户上下文）
@@ -82,6 +114,8 @@ public class PromptTemplateManager {
             
             ## 当前日期
             {currentDate}
+            
+            {thinkingInstruction}
 
             ## 用户问题
             {question}
@@ -99,6 +133,8 @@ public class PromptTemplateManager {
 
             ## 用户问题
             {question}
+            
+            {thinkingInstruction}
 
             ## 回答要求
             1. 优先使用知识库内容，标注"根据资料..."
@@ -119,6 +155,8 @@ public class PromptTemplateManager {
             
             ## 用户问题
             {question}
+            
+            {thinkingInstruction}
             
             ## 回答要求
             1. **综合信息**: 整合多个搜索结果，给出全面的回答
@@ -148,6 +186,8 @@ public class PromptTemplateManager {
             
             ## 用户问题
             {question}
+            
+            {thinkingInstruction}
             
             ## 回答策略
             1. **优先级**: 知识库（专业资料）> 联网搜索（实时信息）> 通用知识
@@ -268,6 +308,7 @@ public class PromptTemplateManager {
         return AGENT_SYSTEM_PROMPT
                 .replace("{userContext}", userContext != null ? userContext : "暂无用户上下文")
                 .replace("{currentDate}", currentDate)
+                .replace("{thinkingInstruction}", THINKING_INSTRUCTION)
                 .replace("{question}", question);
     }
 
@@ -279,6 +320,7 @@ public class PromptTemplateManager {
         return CHAT_PROMPT_TEMPLATE
                 .replace("{userContext}", userContext != null ? userContext : "暂无用户上下文")
                 .replace("{currentDate}", currentDate)
+                .replace("{thinkingInstruction}", THINKING_INSTRUCTION)
                 .replace("{question}", question);
     }
 
@@ -288,6 +330,7 @@ public class PromptTemplateManager {
     public String buildRagPrompt(String context, String question) {
         return RAG_PROMPT_TEMPLATE
                 .replace("{context}", context)
+                .replace("{thinkingInstruction}", THINKING_INSTRUCTION)
                 .replace("{question}", question);
     }
 
@@ -297,6 +340,7 @@ public class PromptTemplateManager {
     public String buildInternetPrompt(String context, String question) {
         return INTERNET_PROMPT_TEMPLATE
                 .replace("{context}", context)
+                .replace("{thinkingInstruction}", THINKING_INSTRUCTION)
                 .replace("{question}", question);
     }
 
@@ -307,6 +351,7 @@ public class PromptTemplateManager {
         return HYBRID_PROMPT_TEMPLATE
                 .replace("{ragContext}", ragContext)
                 .replace("{internetContext}", internetContext)
+                .replace("{thinkingInstruction}", THINKING_INSTRUCTION)
                 .replace("{question}", question);
     }
 

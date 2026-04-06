@@ -5,6 +5,7 @@ export const SSE_EVENT_NAMES = Object.freeze({
   OPEN: "open",
   MESSAGE: "message",
   ADD: "add",
+  THINKING: "thinking",
   FINISH: "finish",
   ERROR: "error",
   CUSTOM_EVENT: "customEvent",
@@ -32,6 +33,7 @@ function normalizeHandlers(options) {
     "onOpen",
     "onMessage",
     "onAdd",
+    "onThinking",
     "onFinish",
     "onError",
     "onCustomEvent",
@@ -75,6 +77,7 @@ export function bindSseListeners(source, handlers = {}) {
   register(SSE_EVENT_NAMES.OPEN, handlers.onOpen);
   register(SSE_EVENT_NAMES.MESSAGE, handlers.onMessage);
   register(SSE_EVENT_NAMES.ADD, handlers.onAdd);
+  register(SSE_EVENT_NAMES.THINKING, handlers.onThinking);
   register(SSE_EVENT_NAMES.FINISH, handlers.onFinish);
   register(SSE_EVENT_NAMES.ERROR, handlers.onError);
 

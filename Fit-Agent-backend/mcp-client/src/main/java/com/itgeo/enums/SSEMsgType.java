@@ -13,6 +13,10 @@ public enum SSEMsgType {
      */
     ADD("add", "流式追加分片"),
     /**
+     * 思考过程分片，前端可折叠或用不同样式展示。
+     */
+    THINKING("thinking", "思考过程分片"),
+    /**
      * 本轮输出结束事件，通常携带最终结果快照。
      */
     FINISH("finish", "输出结束事件"),
